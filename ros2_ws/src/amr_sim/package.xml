@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<package format="3">
+
+  <name>amr_sim</name>
+  <version>0.0.0</version>
+  <description>Simulation package for autonomous warehouse AMR</description>
+
+  <maintainer email="huy@todo.todo">huy</maintainer>
+
+  <license>Apache-2.0</license>
+
+  <!-- Build -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Runtime -->
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+
+  <exec_depend>tf2_ros</exec_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+
+  <!-- Testing -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

@@ -1,0 +1,325 @@
+<?xml version="1.0"?>
+<sdf version="1.10">
+
+  <model name="amr" canonical_link="base_link">
+
+    <!--
+      PROTOTYPE SIMULATION MODEL
+      Wheel radius 0.0325 m comes from the planned 65 mm wheels.
+      Chassis dimensions / masses / wheel separation are temporary.
+    -->
+
+    <!-- ================= BASE ================= -->
+
+    <link name="base_link">
+            <!-- ================= 2D LIDAR ================= -->
+
+      <sensor name="lidar" type="gpu_lidar">
+
+        <!-- Temporary lidar mounting position -->
+        <pose>0.08 0 0.08 0 0 0</pose>
+
+        <topic>/scan</topic>
+
+        <!-- ROS / TF friendly frame name -->
+        <gz_frame_id>laser_link</gz_frame_id>
+
+        <update_rate>10</update_rate>
+
+        <lidar>
+
+          <scan>
+
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+
+              <!-- 360 degrees -->
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+
+          </scan>
+
+          <range>
+            <min>0.10</min>
+            <max>8.0</max>
+            <resolution>0.01</resolution>
+          </range>
+
+        </lidar>
+
+        <always_on>true</always_on>
+
+        <!-- Tạm false để giảm tải VMware -->
+        <visualize>false</visualize>
+
+      </sensor>
+      <pose relative_to="__model__">
+        0 0 0.07 0 0 0
+      </pose>
+
+      <inertial>
+        <mass>2.0</mass>
+
+        <inertia>
+          <ixx>0.00867</ixx>
+          <iyy>0.01560</iyy>
+          <izz>0.02307</izz>
+
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="base_visual">
+        <geometry>
+          <box>
+            <size>0.30 0.22 0.06</size>
+          </box>
+        </geometry>
+
+        <material>
+          <ambient>0.15 0.35 0.80 1</ambient>
+          <diffuse>0.15 0.35 0.80 1</diffuse>
+        </material>
+      </visual>
+
+      <collision name="base_collision">
+        <geometry>
+          <box>
+            <size>0.30 0.22 0.06</size>
+          </box>
+        </geometry>
+      </collision>
+
+    </link>
+
+
+    <!-- ================= LEFT WHEEL ================= -->
+
+    <link name="left_wheel">
+
+      <pose relative_to="__model__">
+        -0.07 0.125 0.0325 1.5708 0 0
+      </pose>
+
+      <inertial>
+        <mass>0.2</mass>
+
+        <inertia>
+          <ixx>0.0000678</ixx>
+          <iyy>0.0001056</iyy>
+          <izz>0.0000678</izz>
+
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.0325</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+      </visual>
+
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.0325</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+
+    </link>
+
+
+    <!-- ================= RIGHT WHEEL ================= -->
+
+    <link name="right_wheel">
+
+      <pose relative_to="__model__">
+        -0.07 -0.125 0.0325 1.5708 0 0
+      </pose>
+
+      <inertial>
+        <mass>0.2</mass>
+
+        <inertia>
+          <ixx>0.0000678</ixx>
+          <iyy>0.0001056</iyy>
+          <izz>0.0000678</izz>
+
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.0325</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+      </visual>
+
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.0325</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+
+    </link>
+
+
+    <!-- ================= CASTER ================= -->
+
+    <link name="caster">
+
+      <pose relative_to="__model__">
+        0.12 0 0.02 0 0 0
+      </pose>
+
+      <inertial>
+        <mass>0.05</mass>
+
+        <inertia>
+          <ixx>0.000008</ixx>
+          <iyy>0.000008</iyy>
+          <izz>0.000008</izz>
+
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="visual">
+        <geometry>
+          <sphere>
+            <radius>0.02</radius>
+          </sphere>
+        </geometry>
+      </visual>
+
+      <collision name="collision">
+        <geometry>
+          <sphere>
+            <radius>0.02</radius>
+          </sphere>
+        </geometry>
+      </collision>
+
+    </link>
+
+
+    <!-- ================= JOINTS ================= -->
+
+    <joint name="left_wheel_joint" type="revolute">
+
+      <parent>base_link</parent>
+      <child>left_wheel</child>
+
+      <axis>
+        <xyz expressed_in="__model__">0 1 0</xyz>
+
+        <limit>
+          <lower>-1.79769e+308</lower>
+          <upper>1.79769e+308</upper>
+        </limit>
+      </axis>
+
+    </joint>
+
+
+    <joint name="right_wheel_joint" type="revolute">
+
+      <parent>base_link</parent>
+      <child>right_wheel</child>
+
+      <axis>
+        <xyz expressed_in="__model__">0 1 0</xyz>
+
+        <limit>
+          <lower>-1.79769e+308</lower>
+          <upper>1.79769e+308</upper>
+        </limit>
+      </axis>
+
+    </joint>
+
+
+    <joint name="caster_joint" type="ball">
+
+      <parent>base_link</parent>
+      <child>caster</child>
+
+    </joint>
+
+
+    <!-- ================= DIFFERENTIAL DRIVE ================= -->
+
+    <plugin
+      filename="gz-sim-diff-drive-system"
+      name="gz::sim::systems::DiffDrive">
+
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+
+      <!-- temporary prototype wheel track -->
+      <wheel_separation>0.25</wheel_separation>
+
+      <!-- 65 mm diameter wheel -->
+      <wheel_radius>0.0325</wheel_radius>
+
+      <topic>/cmd_vel</topic>
+
+      <odom_topic>/odom</odom_topic>
+
+      <tf_topic>/tf</tf_topic>
+
+      <frame_id>odom</frame_id>
+
+      <child_frame_id>base_link</child_frame_id>
+
+    </plugin>
+
+  </model>
+
+</sdf>

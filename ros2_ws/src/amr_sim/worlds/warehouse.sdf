@@ -1,0 +1,324 @@
+<?xml version="1.0" ?>
+<sdf version="1.10">
+
+  <world name="warehouse">
+        <!-- Core Gazebo systems -->
+    <plugin
+      filename="gz-sim-physics-system"
+      name="gz::sim::systems::Physics">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-user-commands-system"
+      name="gz::sim::systems::UserCommands">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-scene-broadcaster-system"
+      name="gz::sim::systems::SceneBroadcaster">
+    </plugin>
+
+    <!-- Rendering sensors such as GPU LiDAR -->
+    <plugin
+      filename="gz-sim-sensors-system"
+      name="gz::sim::systems::Sensors">
+      <render_engine>ogre</render_engine>
+    </plugin>
+    <!-- Physics -->
+    <physics name="physics" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Ánh sáng -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+
+      <pose>0 0 10 0 0 0</pose>
+
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Mặt sàn -->
+    <model name="floor">
+      <static>true</static>
+
+      <link name="floor_link">
+
+        <collision name="floor_collision">
+          <geometry>
+            <box>
+              <size>12 8 0.1</size>
+            </box>
+          </geometry>
+        </collision>
+
+
+        <visual name="floor_visual">
+          <geometry>
+            <box>
+              <size>12 8 0.1</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+
+      <pose>0 0 -0.05 0 0 0</pose>
+    </model>
+
+
+    <!-- Tường phía Bắc -->
+    <model name="wall_north">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>12 0.15 1.5</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>12 0.15 1.5</size>
+            </box>
+          </geometry>
+        </visual>
+
+      </link>
+
+      <pose>0 3.925 0.75 0 0 0</pose>
+    </model>
+
+
+    <!-- Tường phía Nam -->
+    <model name="wall_south">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>12 0.15 1.5</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>12 0.15 1.5</size>
+            </box>
+          </geometry>
+        </visual>
+
+      </link>
+
+      <pose>0 -3.925 0.75 0 0 0</pose>
+    </model>
+
+
+    <!-- Tường phía Tây -->
+    <model name="wall_west">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.15 8 1.5</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.15 8 1.5</size>
+            </box>
+          </geometry>
+        </visual>
+
+      </link>
+
+      <pose>-5.925 0 0.75 0 0 0</pose>
+    </model>
+
+
+    <!-- Tường phía Đông -->
+    <model name="wall_east">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.15 8 1.5</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.15 8 1.5</size>
+            </box>
+          </geometry>
+        </visual>
+
+      </link>
+
+      <pose>5.925 0 0.75 0 0 0</pose>
+    </model>
+
+
+    <!-- Kệ hàng 1 -->
+    <model name="shelf_1">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.45 0.30 0.15 1</ambient>
+            <diffuse>0.45 0.30 0.15 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+
+      <pose>-2.5 1.7 0.6 0 0 0</pose>
+    </model>
+
+
+    <!-- Kệ hàng 2 -->
+    <model name="shelf_2">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.45 0.30 0.15 1</ambient>
+            <diffuse>0.45 0.30 0.15 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+
+      <pose>2.5 1.7 0.6 0 0 0</pose>
+    </model>
+
+
+    <!-- Kệ hàng 3 -->
+    <model name="shelf_3">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.45 0.30 0.15 1</ambient>
+            <diffuse>0.45 0.30 0.15 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+
+      <pose>-2.5 -1.7 0.6 0 0 0</pose>
+    </model>
+
+
+    <!-- Kệ hàng 4 -->
+    <model name="shelf_4">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>3 0.6 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.45 0.30 0.15 1</ambient>
+            <diffuse>0.45 0.30 0.15 1</diffuse>
+          </material>
+        </visual>
+
+      </link>
+
+      <pose>2.5 -1.7 0.6 0 0 0</pose>
+    </model>
+
+  </world>
+
+</sdf>

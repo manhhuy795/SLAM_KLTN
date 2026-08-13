@@ -1,0 +1,31 @@
+frontier_explorer:
+  ros__parameters:
+
+    use_sim_time: false
+
+    map_topic: /map
+    global_costmap_topic: /global_costmap/costmap
+
+    map_frame: map
+    robot_base_frame: base_link
+
+    exploration_period_sec: 4.0
+    max_costmap_age_sec: 3.0
+
+    min_cluster_size: 8
+    min_cluster_area_m2: 0.02
+    candidate_search_radius: 0.35
+
+    costmap_reject_threshold: 80
+
+    blacklist_radius: 0.50
+    failure_limit: 2
+
+    goal_timeout_sec: 120.0
+    max_exploration_time_sec: 1800.0
+
+    required_empty_checks: 3
+
+    w_gain: 0.6
+    w_distance: 0.3
+    w_failure: 0.1

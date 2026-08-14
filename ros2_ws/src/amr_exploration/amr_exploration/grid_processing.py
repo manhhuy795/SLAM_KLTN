@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
@@ -11,6 +11,12 @@ class FrontierCluster:
     area_m2: float
     centroid_row: float
     centroid_col: float
+    cells: tuple[tuple[int, int], ...] = field(
+        default_factory=tuple,
+        compare=False,
+        repr=False,
+    )
+
 
 
 @dataclass(frozen=True)
@@ -148,8 +154,21 @@ def extract_clusters(
 
         centroid_col, centroid_row = centroids[label]
 
+        cell_coordinates = np.argwhere(
+            labels == label
+        )
+
+        cells = tuple(
+            (
+                int(row),
+                int(col),
+            )
+            for row, col in cell_coordinates
+        )
+
         clusters.append(
             FrontierCluster(
+                cells=cells,
                 label=label,
                 cell_count=cell_count,
                 area_m2=area_m2,
@@ -182,6 +201,45 @@ def select_candidate_near_centroid(
     center_col = int(
         round(cluster.centroid_col)
     )
+
+    if cluster.cells:
+        valid_cells = [
+            (row, col)
+            for row, col in cluster.cells
+            if (
+                0 <= row < map_grid.shape[0]
+                and 0 <= col < map_grid.shape[1]
+                and map_grid[row, col] == 0
+            )
+        ]
+
+        if not valid_cells:
+            return None
+
+        row, col = min(
+            valid_cells,
+            key=lambda cell: (
+                (cell[0] - cluster.centroid_row) ** 2
+                +
+                (cell[1] - cluster.centroid_col) ** 2
+            ),
+        )
+
+        x, y = grid_to_world(
+            row=row,
+            col=col,
+            resolution=resolution,
+            origin_x=origin_x,
+            origin_y=origin_y,
+        )
+
+        return Candidate(
+            row=row,
+            col=col,
+            x=x,
+            y=y,
+            cluster=cluster,
+        )
 
     max_radius_cells = max(
         0,

@@ -160,3 +160,52 @@ def test_sample_costmap_cost_returns_none_outside_map():
     )
 
     assert cost is None
+
+def test_candidate_for_ring_frontier_must_lie_on_frontier():
+    # Unknown toàn bản đồ.
+    grid = np.full(
+        (11, 11),
+        -1,
+        dtype=np.int8,
+    )
+
+    # Một vùng free hình vuông.
+    # Frontier của vùng này sẽ tạo thành một "vòng"
+    # bao quanh tâm (5, 5).
+    grid[2:9, 2:9] = 0
+
+    mask = frontier_mask(
+        grid
+    )
+
+    clusters = extract_clusters(
+        mask=mask,
+        resolution=0.05,
+        min_cluster_size=1,
+        min_cluster_area_m2=0.0,
+    )
+
+    assert len(clusters) == 1
+
+    cluster = clusters[0]
+
+    candidate = select_candidate_near_centroid(
+        cluster=cluster,
+        map_grid=grid,
+        resolution=0.05,
+        origin_x=0.0,
+        origin_y=0.0,
+        search_radius_m=1.0,
+    )
+
+    assert candidate is not None
+
+    # Candidate phải thực sự nằm trên frontier
+    # của cluster, không được rơi vào vùng free
+    # ở giữa vòng frontier.
+    assert bool(
+        mask[
+            candidate.row,
+            candidate.col,
+        ]
+    )

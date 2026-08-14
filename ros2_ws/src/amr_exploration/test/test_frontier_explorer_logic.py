@@ -1,7 +1,13 @@
 from types import SimpleNamespace
+from action_msgs.msg import GoalStatus
+
+from nav2_msgs.action import NavigateToPose
 
 from amr_exploration.frontier_explorer_node import FrontierExplorerNode
-from amr_exploration.state import ExplorerSession
+from amr_exploration.state import (
+    ExplorerSession,
+    ExplorerState,
+)
 from amr_exploration.blacklist import Blacklist
 
 class FakeLogger:
@@ -436,8 +442,17 @@ def test_compute_best_candidate_returns_valid_frontier():
 
     assert candidate is not None
 
-    assert candidate.x == 2.5
-    assert candidate.y == 2.5
+    # Candidate phải là một cell thật sự thuộc frontier,
+    # không được rơi vào centroid (2.5, 2.5).
+    assert (
+        candidate.row,
+        candidate.col,
+    ) in candidate.cluster.cells
+
+    assert (
+        candidate.x,
+        candidate.y,
+    ) != (2.5, 2.5)
 
 class FakeUnsafeCandidateExplorer(
     FakeCandidateExplorer
@@ -445,16 +460,16 @@ class FakeUnsafeCandidateExplorer(
     def __init__(self):
         super().__init__()
 
-        # Candidate hiện tại nằm tại cell giữa:
-        # row=2, col=2 -> x=2.5, y=2.5
+        # Candidate frontier được chọn:
+        # row=1, col=2 -> x=2.5, y=1.5
         #
         # Đặt cost = 100 để mô phỏng
         # vị trí không an toàn.
         self.latest_costmap = make_grid_msg(
             data=[
                 0, 0,   0, 0, 0,
-                0, 0,   0, 0, 0,
                 0, 0, 100, 0, 0,
+                0, 0,   0, 0, 0,
                 0, 0,   0, 0, 0,
                 0, 0,   0, 0, 0,
             ],
@@ -485,14 +500,15 @@ class FakeBlacklistedCandidateExplorer(
         # Candidate dự kiến tại (2.5, 2.5).
         # Ghi nhận thất bại đủ 2 lần để vùng này
         # trở thành blacklist.
+        # Candidate frontier tại (2.5, 1.5).
         self.blacklist.record_failure(
             2.5,
-            2.5,
+            1.5,
         )
 
         self.blacklist.record_failure(
             2.5,
-            2.5,
+            1.5,
         )
 
 
@@ -560,8 +576,12 @@ def test_compute_best_candidate_uses_score_not_cluster_order():
 
     # Candidate tốt nhất phải thuộc vùng B:
     # vừa lớn hơn vừa gần robot hơn.
-    assert candidate.x == 6.5
-    assert candidate.y == 6.5
+    # Candidate phải thuộc vùng B,
+    # không quan trọng cell frontier nào trong B.
+    assert candidate.cluster.cell_count == 8
+
+    assert candidate.row >= 5
+    assert candidate.col >= 5
 
 
 class FakeFailurePenaltyExplorer(
@@ -596,8 +616,8 @@ class FakeFailurePenaltyExplorer(
         # A thất bại 1 lần.
         # failure_limit = 2 nên A CHƯA bị blacklist.
         self.blacklist.record_failure(
-            2.5,
-            2.5,
+            1.5,
+            1.5,
         )
 
 
@@ -605,19 +625,19 @@ def test_compute_best_candidate_penalizes_previous_failure():
     explorer = FakeFailurePenaltyExplorer()
 
     assert explorer.blacklist.contains(
-        2.5,
-        2.5,
+        1.5,
+        1.5,
     ) is False
 
     assert explorer.blacklist.failure_count(
-        2.5,
-        2.5,
+        1.5,
+        1.5,
     ) == 1
 
     candidate = (
         FrontierExplorerNode._compute_best_candidate(
             explorer,
-            robot_xy=(4.5, 2.5),
+            robot_xy=(4.0, 1.5),
         )
     )
 
@@ -626,7 +646,7 @@ def test_compute_best_candidate_penalizes_previous_failure():
     # Hai candidate cùng gain và cùng khoảng cách.
     # B phải thắng vì A đã từng thất bại.
     assert candidate.x == 6.5
-    assert candidate.y == 2.5
+    assert candidate.y == 1.5
 
 
 class RecordingLogger:
@@ -649,6 +669,12 @@ class FakeCandidateTickExplorer(
     def __init__(self):
         super().__init__()
         self.logger = RecordingLogger()
+
+    def _send_navigation_goal(
+        self,
+        candidate,
+    ):
+        pass
 
     def _compute_best_candidate(
         self,
@@ -677,3 +703,699 @@ def test_tick_logs_selected_candidate():
         and 'y=2.50' in message
         for message in explorer.logger.info_messages
     )
+
+class FakeNavigationTickExplorer(
+    FakeCandidateTickExplorer
+):
+    def __init__(self):
+        super().__init__()
+        self.sent_candidates = []
+
+    def _send_navigation_goal(
+        self,
+        candidate,
+    ):
+        self.sent_candidates.append(
+            candidate
+        )
+
+
+def test_tick_sends_selected_candidate_to_navigation():
+    explorer = FakeNavigationTickExplorer()
+
+    FrontierExplorerNode._exploration_tick(
+        explorer
+    )
+
+    assert len(
+        explorer.sent_candidates
+    ) == 1
+
+    candidate = explorer.sent_candidates[0]
+
+    assert candidate.x == 1.25
+    assert candidate.y == 2.50
+
+class FakeClockTime:
+    def to_msg(self):
+        return SimpleNamespace(
+            sec=123,
+            nanosec=456,
+        )
+
+
+class FakeClock:
+    def now(self):
+        return FakeClockTime()
+
+
+class FakeGoalBuilderExplorer:
+    def get_parameter(self, name):
+        values = {
+            'map_frame': 'map',
+        }
+
+        return SimpleNamespace(
+            value=values[name]
+        )
+
+    def get_clock(self):
+        return FakeClock()
+
+
+def test_build_navigation_goal_uses_candidate_pose():
+    explorer = FakeGoalBuilderExplorer()
+
+    candidate = SimpleNamespace(
+        x=1.25,
+        y=2.50,
+    )
+
+    goal = FrontierExplorerNode._build_navigation_goal(
+        explorer,
+        candidate,
+    )
+
+    assert isinstance(
+        goal,
+        NavigateToPose.Goal,
+    )
+
+    assert goal.pose.header.frame_id == 'map'
+
+    assert goal.pose.pose.position.x == 1.25
+    assert goal.pose.pose.position.y == 2.50
+    assert goal.pose.pose.position.z == 0.0
+
+    assert goal.pose.pose.orientation.x == 0.0
+    assert goal.pose.pose.orientation.y == 0.0
+    assert goal.pose.pose.orientation.z == 0.0
+    assert goal.pose.pose.orientation.w == 1.0
+
+class FakeGoalFuture:
+    def __init__(self):
+        self.callback = None
+
+    def add_done_callback(
+        self,
+        callback,
+    ):
+        self.callback = callback
+
+
+class FakeNavigateClient:
+    def __init__(self):
+        self.sent_goals = []
+        self.future = FakeGoalFuture()
+
+    def send_goal_async(
+        self,
+        goal,
+    ):
+        self.sent_goals.append(
+            goal
+        )
+        return self.future
+
+
+class FakeSendGoalExplorer:
+    def __init__(self):
+        self.session = ExplorerSession()
+        self.nav_client = FakeNavigateClient()
+        self.logger = FakeLogger()
+
+    def get_logger(self):
+        return self.logger
+
+    def get_parameter(self, name):
+        values = {
+            'map_frame': 'map',
+        }
+
+        return SimpleNamespace(
+            value=values[name]
+        )
+
+    def _build_navigation_goal(
+        self,
+        candidate,
+        ):
+        return FrontierExplorerNode._build_navigation_goal(
+            self,
+            candidate,
+        )
+
+    def _goal_response_callback(
+        self,
+        future,
+        ):
+        pass
+
+
+def test_send_navigation_goal_sends_action_and_enters_navigating():
+    explorer = FakeSendGoalExplorer()
+
+    candidate = SimpleNamespace(
+        x=1.25,
+        y=2.50,
+    )
+
+    FrontierExplorerNode._send_navigation_goal(
+        explorer,
+        candidate,
+    )
+
+    assert explorer.session.state is ExplorerState.NAVIGATING
+
+    assert explorer.session.active_goal_xy == (
+        1.25,
+        2.50,
+    )
+
+    assert len(
+        explorer.nav_client.sent_goals
+    ) == 1
+
+    goal = explorer.nav_client.sent_goals[0]
+
+    assert goal.pose.header.frame_id == 'map'
+    assert goal.pose.pose.position.x == 1.25
+    assert goal.pose.pose.position.y == 2.50
+
+    assert (
+        explorer.nav_client.future.callback
+        is not None
+    )
+
+
+class FakeActionResultFuture:
+    def __init__(self):
+        self.callback = None
+
+    def add_done_callback(
+        self,
+        callback,
+    ):
+        self.callback = callback
+
+
+class FakeGoalHandle:
+    def __init__(
+        self,
+        accepted,
+    ):
+        self.accepted = accepted
+        self.result_future = FakeActionResultFuture()
+
+    def get_result_async(self):
+        return self.result_future
+
+
+class FakeGoalResponseFuture:
+    def __init__(
+        self,
+        goal_handle,
+    ):
+        self.goal_handle = goal_handle
+
+    def result(self):
+        return self.goal_handle
+
+
+class FakeGoalResponseExplorer:
+    def __init__(self):
+        self.session = ExplorerSession()
+        self.session.start_navigation(
+            (1.25, 2.50)
+        )
+
+        self.blacklist = Blacklist(
+            radius=0.4,
+            failure_limit=2,
+        )
+
+        self.logger = FakeLogger()
+        self.active_goal_handle = None
+        self.goal_started_monotonic = None
+        self.goal_cancel_requested = True
+
+    def get_logger(self):
+        return self.logger
+
+    def _navigation_result_callback(
+        self,
+        future,
+    ):
+        pass
+
+    def _clear_navigation_tracking(
+        self,
+    ):
+        return FrontierExplorerNode._clear_navigation_tracking(
+            self
+        )
+
+
+def test_goal_rejected_returns_to_idle_and_records_failure():
+    explorer = FakeGoalResponseExplorer()
+
+    goal_handle = FakeGoalHandle(
+        accepted=False
+    )
+
+    future = FakeGoalResponseFuture(
+        goal_handle
+    )
+
+    FrontierExplorerNode._goal_response_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.session.state is ExplorerState.IDLE
+    assert explorer.session.active_goal_xy is None
+
+    assert explorer.blacklist.failure_count(
+        1.25,
+        2.50,
+    ) == 1
+
+
+def test_goal_accepted_keeps_navigating_and_waits_for_result():
+    explorer = FakeGoalResponseExplorer()
+
+    goal_handle = FakeGoalHandle(
+        accepted=True
+    )
+
+    future = FakeGoalResponseFuture(
+        goal_handle
+    )
+
+    FrontierExplorerNode._goal_response_callback(
+        explorer,
+        future,
+    )
+
+    assert (
+        explorer.session.state
+        is ExplorerState.NAVIGATING
+    )
+
+    assert (
+        explorer.session.active_goal_xy
+        == (1.25, 2.50)
+    )
+
+    assert (
+        goal_handle.result_future.callback
+        is not None
+    )
+
+    assert explorer.blacklist.failure_count(
+        1.25,
+        2.50,
+    ) == 0
+
+class FakeNavigationResultFuture:
+    def __init__(
+        self,
+        status,
+    ):
+        self.status = status
+
+    def result(self):
+        return SimpleNamespace(
+            status=self.status
+        )
+
+
+class FakeNavigationResultExplorer:
+    def __init__(self):
+        self.session = ExplorerSession()
+
+        self.session.start_navigation(
+            (1.25, 2.50)
+        )
+
+        self.blacklist = Blacklist(
+            radius=0.4,
+            failure_limit=2,
+        )
+
+        self.logger = FakeLogger()
+        self.active_goal_handle = object()
+        self.goal_started_monotonic = 100.0
+        self.goal_cancel_requested = True
+
+    def _clear_navigation_tracking(
+        self,
+    ):
+        return FrontierExplorerNode._clear_navigation_tracking(
+            self
+        )
+
+    def get_logger(self):
+        return self.logger
+
+
+def test_navigation_success_returns_to_idle_without_failure():
+    explorer = FakeNavigationResultExplorer()
+
+    future = FakeNavigationResultFuture(
+        GoalStatus.STATUS_SUCCEEDED
+    )
+
+    FrontierExplorerNode._navigation_result_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.session.state is ExplorerState.IDLE
+    assert explorer.session.active_goal_xy is None
+
+    assert explorer.blacklist.failure_count(
+        1.25,
+        2.50,
+    ) == 0
+
+
+def test_navigation_aborted_records_failure_and_returns_idle():
+    explorer = FakeNavigationResultExplorer()
+
+    future = FakeNavigationResultFuture(
+        GoalStatus.STATUS_ABORTED
+    )
+
+    FrontierExplorerNode._navigation_result_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.session.state is ExplorerState.IDLE
+    assert explorer.session.active_goal_xy is None
+
+    assert explorer.blacklist.failure_count(
+        1.25,
+        2.50,
+    ) == 1
+
+
+def test_navigation_canceled_records_failure_and_returns_idle():
+    explorer = FakeNavigationResultExplorer()
+
+    future = FakeNavigationResultFuture(
+        GoalStatus.STATUS_CANCELED
+    )
+
+    FrontierExplorerNode._navigation_result_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.session.state is ExplorerState.IDLE
+    assert explorer.session.active_goal_xy is None
+
+    assert explorer.blacklist.failure_count(
+        1.25,
+        2.50,
+    ) == 1
+
+class FakeCancelableGoalHandle:
+    def __init__(self):
+        self.cancel_calls = 0
+
+    def cancel_goal_async(self):
+        self.cancel_calls += 1
+        return SimpleNamespace()
+
+
+class FakeTimeoutExplorer:
+    def __init__(
+        self,
+        *,
+        started_at=100.0,
+        timeout=10.0,
+    ):
+        self.session = ExplorerSession()
+        self.session.start_navigation(
+            (1.25, 2.50)
+        )
+
+        self.active_goal_handle = (
+            FakeCancelableGoalHandle()
+        )
+
+        self.goal_started_monotonic = (
+            started_at
+        )
+
+        self.goal_cancel_requested = False
+        self.timeout = timeout
+        self.logger = FakeLogger()
+
+    def get_logger(self):
+        return self.logger
+
+    def get_parameter(self, name):
+        values = {
+            'goal_timeout_sec': self.timeout,
+        }
+
+        return SimpleNamespace(
+            value=values[name]
+        )
+
+
+def test_navigation_before_timeout_does_not_cancel(
+    monkeypatch,
+):
+    explorer = FakeTimeoutExplorer(
+        started_at=100.0,
+        timeout=10.0,
+    )
+
+    monkeypatch.setattr(
+        'amr_exploration.frontier_explorer_node.time.monotonic',
+        lambda: 105.0,
+    )
+
+    timed_out = (
+        FrontierExplorerNode._check_navigation_timeout(
+            explorer
+        )
+    )
+
+    assert timed_out is False
+    assert (
+        explorer.active_goal_handle.cancel_calls
+        == 0
+    )
+
+
+def test_navigation_timeout_requests_cancel(
+    monkeypatch,
+):
+    explorer = FakeTimeoutExplorer(
+        started_at=100.0,
+        timeout=10.0,
+    )
+
+    monkeypatch.setattr(
+        'amr_exploration.frontier_explorer_node.time.monotonic',
+        lambda: 111.0,
+    )
+
+    timed_out = (
+        FrontierExplorerNode._check_navigation_timeout(
+            explorer
+        )
+    )
+
+    assert timed_out is True
+    assert (
+        explorer.active_goal_handle.cancel_calls
+        == 1
+    )
+
+    assert explorer.goal_cancel_requested is True
+
+    # Vẫn NAVIGATING cho tới khi Nav2 trả
+    # result CANCELED.
+    assert (
+        explorer.session.state
+        is ExplorerState.NAVIGATING
+    )
+
+
+def test_timeout_does_not_send_cancel_twice(
+    monkeypatch,
+):
+    explorer = FakeTimeoutExplorer(
+        started_at=100.0,
+        timeout=10.0,
+    )
+
+    monkeypatch.setattr(
+        'amr_exploration.frontier_explorer_node.time.monotonic',
+        lambda: 111.0,
+    )
+
+    FrontierExplorerNode._check_navigation_timeout(
+        explorer
+    )
+
+    FrontierExplorerNode._check_navigation_timeout(
+        explorer
+    )
+
+    assert (
+        explorer.active_goal_handle.cancel_calls
+        == 1
+    )
+
+def test_goal_accepted_stores_handle_and_starts_timeout(
+    monkeypatch,
+):
+    explorer = FakeGoalResponseExplorer()
+
+    goal_handle = FakeGoalHandle(
+        accepted=True
+    )
+
+    future = FakeGoalResponseFuture(
+        goal_handle
+    )
+
+    monkeypatch.setattr(
+        'amr_exploration.frontier_explorer_node.time.monotonic',
+        lambda: 123.0,
+    )
+
+    FrontierExplorerNode._goal_response_callback(
+        explorer,
+        future,
+    )
+
+    assert (
+        explorer.active_goal_handle
+        is goal_handle
+    )
+
+    assert (
+        explorer.goal_started_monotonic
+        == 123.0
+    )
+
+    assert (
+        explorer.goal_cancel_requested
+        is False
+    )
+
+class FakeNavigatingTickExplorer:
+    def __init__(self):
+        self.enabled = True
+
+        self.session = ExplorerSession()
+        self.session.start_navigation(
+            (1.25, 2.50)
+        )
+
+        self.timeout_checks = 0
+
+    def _check_navigation_timeout(
+        self,
+    ):
+        self.timeout_checks += 1
+        return False
+
+
+def test_tick_checks_timeout_while_navigating():
+    explorer = FakeNavigatingTickExplorer()
+
+    FrontierExplorerNode._exploration_tick(
+        explorer
+    )
+
+    assert explorer.timeout_checks == 1
+
+    assert (
+        explorer.session.state
+        is ExplorerState.NAVIGATING
+    )
+def test_navigation_success_clears_goal_tracking():
+    explorer = FakeNavigationResultExplorer()
+
+    future = FakeNavigationResultFuture(
+        GoalStatus.STATUS_SUCCEEDED
+    )
+
+    FrontierExplorerNode._navigation_result_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.active_goal_handle is None
+    assert explorer.goal_started_monotonic is None
+    assert explorer.goal_cancel_requested is False
+
+def test_navigation_aborted_clears_goal_tracking():
+    explorer = FakeNavigationResultExplorer()
+
+    future = FakeNavigationResultFuture(
+        GoalStatus.STATUS_ABORTED
+    )
+
+    FrontierExplorerNode._navigation_result_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.active_goal_handle is None
+    assert explorer.goal_started_monotonic is None
+    assert explorer.goal_cancel_requested is False
+
+
+def test_navigation_canceled_clears_goal_tracking():
+    explorer = FakeNavigationResultExplorer()
+
+    future = FakeNavigationResultFuture(
+        GoalStatus.STATUS_CANCELED
+    )
+
+    FrontierExplorerNode._navigation_result_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.active_goal_handle is None
+    assert explorer.goal_started_monotonic is None
+    assert explorer.goal_cancel_requested is False
+
+def test_goal_rejected_clears_navigation_tracking():
+    explorer = FakeGoalResponseExplorer()
+
+    # Giả lập còn dữ liệu tracking cũ.
+    explorer.active_goal_handle = object()
+    explorer.goal_started_monotonic = 100.0
+    explorer.goal_cancel_requested = True
+
+    goal_handle = FakeGoalHandle(
+        accepted=False
+    )
+
+    future = FakeGoalResponseFuture(
+        goal_handle
+    )
+
+    FrontierExplorerNode._goal_response_callback(
+        explorer,
+        future,
+    )
+
+    assert explorer.session.state is ExplorerState.IDLE
+    assert explorer.session.active_goal_xy is None
+
+    assert explorer.active_goal_handle is None
+    assert explorer.goal_started_monotonic is None
+    assert explorer.goal_cancel_requested is False

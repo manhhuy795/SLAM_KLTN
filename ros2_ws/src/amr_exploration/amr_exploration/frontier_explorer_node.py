@@ -2,6 +2,8 @@ import time
 
 import rclpy
 
+from action_msgs.msg import GoalStatus
+
 from .grid_processing import (
     extract_clusters,
     frontier_mask,
@@ -142,6 +144,10 @@ class FrontierExplorerNode(Node):
 
         self.latest_map = None
         self.latest_costmap = None
+
+        self.active_goal_handle = None
+        self.goal_started_monotonic = None
+        self.goal_cancel_requested = False
 
         self.latest_map_received_monotonic = None
         self.latest_costmap_received_monotonic = None
@@ -608,17 +614,215 @@ class FrontierExplorerNode(Node):
             best_index
         ]
     
-    def _exploration_tick(
+    def _build_navigation_goal(
         self,
-    	) -> None:
+        candidate,
+        ) -> NavigateToPose.Goal:
+
+        map_frame = str(
+            self.get_parameter(
+                'map_frame'
+            ).value
+        )
+
+        goal = NavigateToPose.Goal()
+
+        goal.pose.header.frame_id = map_frame
+
+        goal.pose.pose.position.x = float(
+            candidate.x
+        )
+
+        goal.pose.pose.position.y = float(
+            candidate.y
+        )
+
+        goal.pose.pose.position.z = 0.0
+
+        goal.pose.pose.orientation.x = 0.0
+        goal.pose.pose.orientation.y = 0.0
+        goal.pose.pose.orientation.z = 0.0
+        goal.pose.pose.orientation.w = 1.0
+
+        return goal
+
+    def _send_navigation_goal(
+        self,
+        candidate,
+    ) -> None:
+
+        goal = self._build_navigation_goal(
+            candidate
+        )
+
+        goal_future = (
+            self.nav_client.send_goal_async(
+                goal
+            )
+        )
+
+        self.session.start_navigation(
+            (
+                float(candidate.x),
+                float(candidate.y),
+            )
+        )
+
+        # Bước 7.4 sẽ thay callback tạm này
+        # bằng xử lý accepted / rejected.
+        goal_future.add_done_callback(
+            self._goal_response_callback
+        )
+
+    def _goal_response_callback(
+        self,
+        future,
+        ) -> None:
+
+        goal_handle = future.result()
+
+        if not goal_handle.accepted:
+            failed_goal = (
+                self.session.active_goal_xy
+            )
+
+            if failed_goal is not None:
+                self.blacklist.record_failure(
+                    failed_goal[0],
+                    failed_goal[1],
+                )
+
+            self.session.navigation_failed()
+            self._clear_navigation_tracking()
+
+            self.get_logger().warn(
+                'Navigation goal rejected by Nav2'
+            )
+
+            return
+
+        self.get_logger().info(
+            'Navigation goal accepted by Nav2'
+        )
+
+        self.active_goal_handle = goal_handle
+        self.goal_started_monotonic = time.monotonic()
+        self.goal_cancel_requested = False
+
+        result_future = (
+            goal_handle.get_result_async()
+        )
+
+        result_future.add_done_callback(
+            self._navigation_result_callback
+        )
+
+    def _clear_navigation_tracking(
+        self,
+    ) -> None:
+        self.active_goal_handle = None
+        self.goal_started_monotonic = None
+        self.goal_cancel_requested = False
+
+    def _navigation_result_callback(
+        self,
+        future,
+    ) -> None:
+
+        result = future.result()
+        status = result.status
+
+        goal_xy = self.session.active_goal_xy
+
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.session.navigation_succeeded()
+            self._clear_navigation_tracking()
+
+            self.get_logger().info(
+                'Navigation goal succeeded'
+            )
+
+            return
+
+        # ABORTED / CANCELED hoặc trạng thái thất bại khác
+        if goal_xy is not None:
+            self.blacklist.record_failure(
+                goal_xy[0],
+                goal_xy[1],
+            )
+
+        self.session.navigation_failed()
+        self._clear_navigation_tracking()
+
+        if status == GoalStatus.STATUS_ABORTED:
+            self.get_logger().warn(
+                'Navigation goal aborted'
+            )
+
+        elif status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().warn(
+                'Navigation goal canceled'
+            )
+
+        else:
+            self.get_logger().warn(
+                f'Navigation failed with status {status}'
+            )
+
+    def _check_navigation_timeout(
+        self,
+    ) -> bool:
+
+        if (
+            self.session.state
+            is not ExplorerState.NAVIGATING
+        ):
+            return False
+
+        if self.active_goal_handle is None:
+            return False
+
+        if self.goal_started_monotonic is None:
+            return False
+
+        if self.goal_cancel_requested:
+            return True
+
+        goal_timeout_sec = float(
+            self.get_parameter(
+                'goal_timeout_sec'
+            ).value
+        )
+
+        elapsed = (
+            time.monotonic()
+            - self.goal_started_monotonic
+        )
+
+        if elapsed <= goal_timeout_sec:
+            return False
+
+        self.goal_cancel_requested = True
+
+        self.active_goal_handle.cancel_goal_async()
+
+        self.get_logger().warn(
+            'Navigation goal timeout - '
+            'cancel requested'
+        )
+
+        return True
+
+    def _exploration_tick(self,) -> None:
 
         if not self.enabled:
             return
 
-        if (
-            self.session.state
-            is not ExplorerState.IDLE
-        ):
+        if self.session.state is ExplorerState.NAVIGATING:
+            self._check_navigation_timeout()
+            return
+
+        if self.session.state is not ExplorerState.IDLE:
             return
 
         # Thiếu map/costmap/Nav2/frame...
@@ -666,6 +870,8 @@ class FrontierExplorerNode(Node):
             f'cells={candidate.cluster.cell_count}, '
             f'area={candidate.cluster.area_m2:.3f} m^2'
         )
+
+        self._send_navigation_goal(candidate)
 
         # Task 6 chỉ chọn và log candidate.
         # Task 7 mới gửi NavigateToPose.

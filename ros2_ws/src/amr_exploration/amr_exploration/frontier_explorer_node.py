@@ -303,6 +303,16 @@ class FrontierExplorerNode(Node):
                 'Frontier exploration enabled'
             )
         else:
+            if (
+                self.session.state
+                is ExplorerState.NAVIGATING
+                and self.active_goal_handle
+                is not None
+                and not self.goal_cancel_requested
+            ):
+                self.goal_cancel_requested = True
+                self.active_goal_handle.cancel_goal_async()
+
             response.message = (
                 'Frontier exploration disabled'
             )

@@ -1399,3 +1399,38 @@ def test_goal_rejected_clears_navigation_tracking():
     assert explorer.active_goal_handle is None
     assert explorer.goal_started_monotonic is None
     assert explorer.goal_cancel_requested is False
+
+def test_disable_while_navigating_requests_cancel():
+    explorer = FakeTimeoutExplorer()
+
+    request = SimpleNamespace(
+        data=False
+    )
+    response = SimpleNamespace()
+
+    FrontierExplorerNode._set_enabled_callback(
+        explorer,
+        request,
+        response,
+    )
+
+    assert explorer.enabled is False
+    assert response.success is True
+    assert (
+        response.message
+        == 'Frontier exploration disabled'
+    )
+
+    assert (
+        explorer.active_goal_handle.cancel_calls
+        == 1
+    )
+
+    assert explorer.goal_cancel_requested is True
+
+    # Giữ NAVIGATING cho tới khi Nav2
+    # trả result CANCELED.
+    assert (
+        explorer.session.state
+        is ExplorerState.NAVIGATING
+    )

@@ -71,10 +71,22 @@ Không cần robot hoặc thiết bị phần cứng để chạy testbed.
 ## Chạy backend
 
 ```powershell
+cd web/backend
+py -3.11 -m pip install -r requirements.txt
+```
+
+```powershell
 cd F:\autonomous-warehouse-robot\web\backend
 py -3.11 init_db.py
 py -3.11 seed.py
 py -3.11 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Smoke test:
+
+```powershell
+cd web/backend
+py -3.11 -m unittest tests.test_smoke
 ```
 
 Backend mặc định dùng SQLite tại:

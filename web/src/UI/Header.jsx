@@ -13,6 +13,10 @@ import {
 
 import { requestSafeStop } from '../services/api';
 import { subscribeRealtime } from '../services/realtime';
+import {
+  aggregateSafeStopState,
+  recordSafeStopResult,
+} from '../services/safeStop';
 
 
 export default function Header({
@@ -27,8 +31,8 @@ export default function Header({
   const [safeStopState, setSafeStopState] =
     useState('IDLE');
 
-  const [safeStopCommandIds, setSafeStopCommandIds] =
-    useState([]);
+  const [safeStopResults, setSafeStopResults] =
+    useState({});
 
   const [time, setTime] =
     useState(new Date());
@@ -54,25 +58,31 @@ export default function Header({
 
     const command = message.data;
 
-    if (
-      command.command !== 'SAFE_STOP'
-      || !safeStopCommandIds.includes(command.id)
-    ) {
+    if (command.command !== 'SAFE_STOP') {
       return;
     }
 
-    setSafeStopCommandIds((current) =>
-      current.filter((id) => id !== command.id)
-    );
+    const result = message.type === 'COMMAND_FAILED'
+      ? 'FAILED'
+      : 'ACKNOWLEDGED';
 
-    setSafeStopState(
-      message.type === 'COMMAND_FAILED'
-        ? 'FAILED'
-        : safeStopCommandIds.length <= 1
-          ? 'ACKNOWLEDGED'
-          : 'PENDING'
-    );
-  }), [safeStopCommandIds]);
+    setSafeStopResults((current) => {
+      return recordSafeStopResult(
+        current,
+        command.id,
+        result,
+      );
+    });
+  }), []);
+
+
+  useEffect(() => {
+    if (Object.keys(safeStopResults).length > 0) {
+      setSafeStopState(
+        aggregateSafeStopState(safeStopResults)
+      );
+    }
+  }, [safeStopResults]);
 
 
   async function handleSafeStop() {
@@ -87,12 +97,17 @@ export default function Header({
 
     try {
       const commands = await requestSafeStop();
-      setSafeStopCommandIds(
-        commands.map((command) => command.id)
+      const results = Object.fromEntries(
+        commands.map((command) => [
+          command.id,
+          'PENDING',
+        ])
       );
+
+      setSafeStopResults(results);
       setSafeStopState(
         commands.length > 0
-          ? 'PENDING'
+          ? aggregateSafeStopState(results)
           : 'NO_TARGET'
       );
     } catch (error) {

@@ -1,0 +1,236 @@
+/* Responsive behavior is intentionally separated from the core UI CSS. */
+
+@media (max-width: 1500px) {
+  .quick-metrics { gap: 8px; }
+  .metric-item span:first-child { display: none; }
+  .brand-subtitle { display: none; }
+  .brand-divider { display: none; }
+  .dashboard-grid { grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr); }
+}
+
+@media (max-width: 1180px) {
+  body { overflow: auto; }
+  .app-shell { min-height: 100vh; height: auto; }
+  .app-body { overflow: visible; }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+  .dashboard-main-column,
+  .dashboard-side-column { overflow: visible; }
+  .recent-events-panel,
+  .map-panel { min-height: 360px; }
+  .quick-metrics { display: none; }
+  .operator-copy { display: none; }
+}
+
+@media (max-width: 900px) {
+  .top-header { padding: 0 10px; gap: 10px; }
+  .mobile-menu-button { display: inline-grid; place-items: center; }
+  .header-separator,
+  .system-badge,
+  .time-chip,
+  .operator-block { display: none; }
+  .header-actions { margin-left: auto; }
+  .safe-stop-button span { display: none; }
+  .safe-stop-button { width: 34px; padding: 0; justify-content: center; }
+
+  .sidebar {
+    position: fixed;
+    top: 48px;
+    bottom: 24px;
+    left: 0;
+    transform: translateX(-100%);
+    transition: transform .18s ease;
+    box-shadow: 12px 0 30px rgba(0,0,0,.35);
+  }
+  .sidebar--open { transform: translateX(0); }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 48px 0 24px;
+    z-index: 30;
+    border: 0;
+    background: rgba(0,0,0,.55);
+  }
+
+  .dashboard-grid { padding: 10px; }
+  .fleet-grid { grid-template-columns: 1fr; }
+  .map-section-header { align-items: flex-start; }
+  .map-section-header,
+  .section-header { flex-wrap: wrap; }
+  .map-legend { justify-content: flex-start; }
+  .summary-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .top-header { height: 52px; }
+  .sidebar { top: 52px; }
+  .sidebar-backdrop { inset: 52px 0 24px; }
+  .brand-title { font-size: 13px; }
+  .brand-mark { width: 10px; height: 10px; }
+  .dashboard-grid { padding: 8px; gap: 8px; }
+  .dashboard-main-column,
+  .dashboard-side-column { gap: 8px; }
+  .panel,
+  .robot-card { padding: 10px; }
+  .robot-kpis { grid-template-columns: 1fr 1fr; }
+  .robot-kpi:last-child { grid-column: 1 / -1; }
+  .robot-card-footer { align-items: flex-start; flex-direction: column; }
+  .robot-route { text-align: left; }
+  .section-caption,
+  .section-meta { display: none; }
+  .section-title-group h2 { white-space: normal; }
+  .map-legend { gap: 8px; font-size: 11px; }
+  .map-panel { min-height: 320px; }
+  .map-canvas { min-height: 280px; }
+  .warning-count { font-size: 11px; }
+  .alert-card-topline,
+  .alert-card-actions,
+  .event-footer,
+  .latest-task-heading,
+  .latest-task-row { align-items: flex-start; flex-direction: column; }
+  .primary-button { width: 100%; }
+  .summary-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-footer { height: auto; min-height: 24px; padding: 6px 10px; flex-wrap: wrap; }
+  .footer-right { display: none; }
+}
+
+@media (max-width: 420px) {
+  .brand-title-row { white-space: normal; }
+  .brand-title { line-height: 1.1; }
+  .robot-card-header { align-items: flex-start; }
+  .robot-name-row { flex-wrap: wrap; }
+  .summary-stats { grid-template-columns: 1fr 1fr; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-button { width: 100%; }
+}
+
+@media (max-width: 1200px) {
+  .tasks-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .task-detail-panel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .tasks-page {
+    padding: 10px;
+  }
+
+  .page-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tasks-create-button {
+    align-self: flex-start;
+  }
+
+  .tasks-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tasks-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tasks-search {
+    width: 100%;
+  }
+
+  .tasks-filters {
+    overflow-x: auto;
+  }
+
+  .task-filter-button {
+    white-space: nowrap;
+  }
+
+  .camera-proof-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .tasks-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .page-heading h1 {
+    font-size: 18px;
+  }
+
+  .task-detail-actions {
+    flex-direction: column;
+  }
+}
+
+/* ==========================================
+   ALERTS RESPONSIVE
+========================================== */
+
+@media (max-width: 900px) {
+  .alerts-page-item {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .alerts-page-actions {
+    grid-column: 2;
+
+    min-width: 0;
+
+    justify-content: flex-start;
+
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 700px) {
+  .alert-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .alerts-page-heading {
+    flex-direction: column;
+
+    gap: 6px;
+  }
+
+  .alerts-page-heading > div {
+    gap: 6px;
+  }
+
+  .alerts-page-item {
+    padding: 11px;
+  }
+
+  .alerts-page-panel .tasks-filters {
+    width: 100%;
+
+    overflow-x: auto;
+  }
+
+  .alerts-page-panel .task-filter-button {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .alerts-page-item {
+    grid-template-columns: 1fr;
+  }
+
+  .alerts-page-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .alerts-page-actions {
+    grid-column: 1;
+  }
+}

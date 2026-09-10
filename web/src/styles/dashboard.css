@@ -1265,6 +1265,18 @@ button { color: inherit; }
   border-color: #ff7300;
 }
 
+.history-toolbar .history-date-input {
+  width: 132px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid #2a313d;
+  outline: none;
+  background: #08090c;
+  color: #cbd5e1;
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+}
+
 
 /* ==========================================
    HISTORY TABLE WRAPPER

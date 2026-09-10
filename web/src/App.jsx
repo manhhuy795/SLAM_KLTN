@@ -71,6 +71,8 @@ export default function App() {
 
 
   useEffect(() => {
+    let loadedOnce = false;
+
     async function loadShellMetrics() {
       try {
         const [
@@ -93,6 +95,7 @@ export default function App() {
 
 
         setBackendOnline(true);
+        loadedOnce = true;
       } catch (error) {
         console.error(
           "Không thể tải trạng thái hệ thống:",
@@ -105,10 +108,7 @@ export default function App() {
 
 
     loadShellMetrics();
-  }, []);
 
-
-  useEffect(() => {
     const unsubscribe = subscribeRealtime((message) => {
       if (
         message.type ===
@@ -127,7 +127,13 @@ export default function App() {
     });
 
     const unsubscribeStatus =
-      subscribeRealtimeStatus(setBackendOnline);
+      subscribeRealtimeStatus((online, isReconnect) => {
+        setBackendOnline(online);
+
+        if (online && (!loadedOnce || isReconnect)) {
+          loadShellMetrics();
+        }
+      });
     const disconnect = connectRealtime();
 
     return () => {

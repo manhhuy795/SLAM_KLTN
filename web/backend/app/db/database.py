@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -10,7 +11,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_PATH = DATA_DIR / "wrms.db"
 
-DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
+DATABASE_URL = os.getenv(
+    "WRMS_DATABASE_URL",
+    f"sqlite:///{DATABASE_PATH.as_posix()}",
+)
 
 
 engine = create_engine(

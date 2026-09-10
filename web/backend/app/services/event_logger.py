@@ -3,6 +3,8 @@ import json
 from sqlalchemy.orm import Session
 
 from app.models.event_log import EventLog
+from app.models.robot import Robot
+from app.models.task import Task
 
 
 def add_event(
@@ -28,6 +30,11 @@ def add_event(
             else None
         ),
     )
+
+    robot = db.get(Robot, robot_id) if robot_id is not None else None
+    task = db.get(Task, task_id) if task_id is not None else None
+    event.robot_code = robot.robot_code if robot else None
+    event.task_code = task.task_code if task else None
 
     db.add(event)
 

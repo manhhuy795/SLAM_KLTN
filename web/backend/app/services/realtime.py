@@ -46,7 +46,9 @@ def event_data(event):
     return {
         "id": event.id,
         "robot_id": event.robot_id,
+        "robot_code": getattr(event, "robot_code", None),
         "task_id": event.task_id,
+        "task_code": getattr(event, "task_code", None),
         "operator_id": event.operator_id,
         "event_type": event.event_type,
         "source": event.source,

@@ -14,3 +14,17 @@ __pycache__/
 
 # Git worktrees
 .worktrees/
+
+# Web / local runtime
+node_modules/
+dist/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+backend/data/*.db
+web/backend/data/*.db
+.env
+.env.*
+.venv/
+venv/

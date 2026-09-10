@@ -1,8 +1,11 @@
-const WS_URL = 'ws://127.0.0.1:8000/ws';
+const WS_URL =
+  import.meta.env.VITE_WS_URL ||
+  'ws://127.0.0.1:8000/ws';
 
 let socket = null;
 let reconnectTimer = null;
 let shouldReconnect = false;
+let everConnected = false;
 
 const messageListeners = new Set();
 const statusListeners = new Set();
@@ -28,7 +31,11 @@ function connectSocket() {
     socket = new WebSocket(WS_URL);
 
     socket.onopen = () => {
-      notifyStatus(true);
+      const isReconnect = everConnected;
+      everConnected = true;
+      statusListeners.forEach((listener) => {
+        listener(true, isReconnect);
+      });
     };
 
     socket.onmessage = (event) => {
@@ -84,6 +91,7 @@ export function connectRealtime() {
 
 export function disconnectRealtime() {
   shouldReconnect = false;
+  everConnected = false;
 
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);

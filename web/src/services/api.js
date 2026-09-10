@@ -1,4 +1,7 @@
-const API_BASE_URL = "http://127.0.0.1:8000/api";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://127.0.0.1:8000/api"
+).replace(/\/$/, "");
 
 
 async function request(path, options = {}) {
@@ -200,8 +203,17 @@ export function resolveAlert(
 // HISTORY
 // ======================
 
-export function getHistory() {
-  return request("/history");
+export function getHistory(filters = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, value);
+    }
+  });
+
+  const query = params.toString();
+  return request(`/history${query ? `?${query}` : ""}`);
 }
 
 export function createTaskProof(taskId, data) {

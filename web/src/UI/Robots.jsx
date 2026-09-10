@@ -14,7 +14,10 @@ import {
   getRobots,
   getTasks,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
 
 
 const TERMINAL_TASK_STATUSES = new Set([
@@ -66,7 +69,7 @@ export default function Robots({ backendOnline }) {
 
 
   useEffect(() => {
-    return subscribeRealtime((message) => {
+    const unsubscribe = subscribeRealtime((message) => {
       if (message.type === 'ROBOT_STATUS_UPDATED') {
         setRobots((current) => {
           const exists = current.some(
@@ -115,6 +118,34 @@ export default function Robots({ backendOnline }) {
         });
       }
     });
+
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (!online || !isReconnect) {
+          return;
+        }
+
+        Promise.all([
+          getRobots(),
+          getTasks(),
+          getAlerts(),
+        ]).then(([robotData, taskData, alertData]) => {
+          setRobots(robotData);
+          setTasks(taskData);
+          setAlerts(alertData);
+          setSelectedId((current) =>
+            current ?? robotData[0]?.id ?? null
+          );
+        }).catch((err) => {
+          setError(err.message);
+        });
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+    };
   }, []);
 
 

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
+from app.models.line_segment import LineSegment
 from app.models.robot import Robot
 from app.models.robot_status import RobotStatus
 from app.schemas.robot import RobotOut, RobotStatusUpdate
@@ -118,6 +119,15 @@ def update_robot_status(
         raise HTTPException(
             status_code=404,
             detail="Robot not found",
+        )
+
+    if (
+        data.line_segment_id is not None
+        and db.get(LineSegment, data.line_segment_id) is None
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Line segment not found",
         )
 
     status = db.get(RobotStatus, robot_id)

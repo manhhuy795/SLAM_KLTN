@@ -28,7 +28,10 @@ import {
   pauseTask,
   resumeTask,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
 
 
 const lifecycle = [
@@ -209,7 +212,7 @@ export default function Tasks({ operatorId }) {
   useEffect(() => {
     loadInitialData();
 
-    return subscribeRealtime((message) => {
+    const unsubscribe = subscribeRealtime((message) => {
       if (message.type !== 'TASK_UPDATED') {
         return;
       }
@@ -228,6 +231,19 @@ export default function Tasks({ operatorId }) {
           : [...current, message.data];
       });
     });
+
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (online && isReconnect) {
+          loadInitialData();
+        }
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+    };
   }, [
     loadInitialData,
   ]);

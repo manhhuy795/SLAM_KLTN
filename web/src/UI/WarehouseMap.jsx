@@ -5,7 +5,10 @@ import {
   getRobots,
   getTasks,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
 
 
 const MAP_WIDTH_METERS = 12;
@@ -77,7 +80,7 @@ export default function WarehouseMap() {
 
 
   useEffect(() => {
-    return subscribeRealtime((message) => {
+    const unsubscribe = subscribeRealtime((message) => {
       if (message.type === 'ROBOT_STATUS_UPDATED') {
         setRobots((current) => {
           const exists = current.some(
@@ -110,6 +113,31 @@ export default function WarehouseMap() {
         });
       }
     });
+
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (!online || !isReconnect) {
+          return;
+        }
+
+        Promise.all([
+          getLocations(),
+          getRobots(),
+          getTasks(),
+        ]).then(([locationData, robotData, taskData]) => {
+          setLocations(locationData);
+          setRobots(robotData);
+          setTasks(taskData);
+        }).catch((err) => {
+          setError(err.message);
+        });
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+    };
   }, []);
 
 

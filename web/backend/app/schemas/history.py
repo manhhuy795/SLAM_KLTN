@@ -9,7 +9,9 @@ class EventLogOut(BaseModel):
     id: int
 
     robot_id: int | None
+    robot_code: str | None
     task_id: int | None
+    task_code: str | None
     operator_id: int | None
 
     event_type: str

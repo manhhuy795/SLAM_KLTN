@@ -100,6 +100,15 @@ REST:      http://127.0.0.1:8000/api
 WebSocket: ws://127.0.0.1:8000/ws
 ```
 
+Có thể đổi endpoint bằng Vite env mà không cần sửa code:
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+VITE_WS_URL=ws://127.0.0.1:8000/ws
+```
+
+Nếu không khai báo `.env.local`, frontend tự dùng hai giá trị localhost ở trên.
+
 Build production:
 
 ```powershell

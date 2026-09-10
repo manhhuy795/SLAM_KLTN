@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RobotStatusUpdate(BaseModel):
@@ -15,7 +15,11 @@ class RobotStatusUpdate(BaseModel):
         "ERROR",
     ] | None = None
 
-    battery_percent: float | None = None
+    battery_percent: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
     voltage: float | None = None
 
     x: float | None = None

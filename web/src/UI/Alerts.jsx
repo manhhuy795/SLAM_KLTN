@@ -11,7 +11,10 @@ import {
   getRobots,
   resolveAlert,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
 
 
 export default function Alerts({ operatorId }) {
@@ -51,11 +54,41 @@ export default function Alerts({ operatorId }) {
 
 
   useEffect(() => {
-    return subscribeRealtime((message) => {
+    const unsubscribe = subscribeRealtime((message) => {
       if (message.type === 'ALERT_UPDATED') {
         replaceAlert(message.data);
       }
     });
+
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (!online || !isReconnect) {
+          return;
+        }
+
+        Promise.all([
+          getAlerts(),
+          getRobots(),
+        ]).then(([alertData, robotData]) => {
+          setAlerts(alertData);
+          setRobotCodes(
+            Object.fromEntries(
+              robotData.map((robot) => [
+                robot.id,
+                robot.robot_code,
+              ])
+            )
+          );
+        }).catch((err) => {
+          setError(err.message);
+        });
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+    };
   }, []);
 
 

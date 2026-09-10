@@ -6,7 +6,10 @@ import {
   resumeTask,
   cancelTask,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
 
 
 const TERMINAL_STATUSES = new Set([
@@ -97,7 +100,7 @@ export default function ActiveTasks() {
   useEffect(() => {
     loadTasks();
 
-    return subscribeRealtime((message) => {
+    const unsubscribe = subscribeRealtime((message) => {
       if (message.type !== 'TASK_UPDATED') {
         return;
       }
@@ -116,6 +119,19 @@ export default function ActiveTasks() {
           : [...current, message.data];
       });
     });
+
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (online && isReconnect) {
+          loadTasks();
+        }
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+    };
   }, [loadTasks]);
 
 

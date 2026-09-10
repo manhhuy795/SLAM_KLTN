@@ -7,7 +7,10 @@ import {
   getRobots,
   getTasks,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
 
 
 const TERMINAL_STATUSES = new Set([
@@ -70,7 +73,7 @@ export default function DashboardSidePanel({
 
 
   useEffect(() => {
-    return subscribeRealtime((message) => {
+    const unsubscribe = subscribeRealtime((message) => {
       if (message.type === 'ALERT_UPDATED') {
         setAlerts((current) => {
           const exists = current.some(
@@ -119,6 +122,40 @@ export default function DashboardSidePanel({
         ].slice(0, 6));
       }
     });
+
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (!online || !isReconnect) {
+          return;
+        }
+
+        Promise.all([
+          getAlerts(),
+          getHistory(),
+          getTasks(),
+          getRobots(),
+        ]).then(([alertData, eventData, taskData, robotData]) => {
+          setAlerts(alertData);
+          setEvents(eventData.slice(0, 6));
+          setTasks(taskData);
+          setRobotCodes(
+            Object.fromEntries(
+              robotData.map((robot) => [
+                robot.id,
+                robot.robot_code,
+              ])
+            )
+          );
+        }).catch((err) => {
+          setError(err.message);
+        });
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+    };
   }, []);
 
 

@@ -6,143 +6,153 @@ import {
   getRobots,
   getTasks,
 } from '../services/api';
-import { subscribeRealtime } from '../services/realtime';
+import {
+  subscribeRealtime,
+  subscribeRealtimeStatus,
+} from '../services/realtime';
+
+
+const EVENT_TYPES = [
+  'TASK_CREATED',
+  'TASK_STATUS_CHANGED',
+  'TASK_FAILED',
+  'TASK_COMPLETED',
+  'TASK_PROOF_CREATED',
+  'TASK_PICKUP_CONFIRMED',
+  'TASK_DELIVERY_CONFIRMED',
+  'ROBOT_STATUS_UPDATED',
+  'ROBOT_COMMAND_CREATED',
+  'ROBOT_COMMAND_ACKNOWLEDGED',
+  'ROBOT_COMMAND_FAILED',
+  'ALERT_CREATED',
+  'ALERT_REPEATED',
+  'ALERT_ACKNOWLEDGED',
+  'ALERT_RESOLVED',
+  'SAFE_STOP_REQUESTED',
+];
 
 
 export default function History() {
   const [events, setEvents] = useState([]);
+  const [robots, setRobots] = useState([]);
+  const [tasks, setTasks] = useState([]);
+
   const [search, setSearch] = useState('');
   const [robot, setRobot] = useState('all');
+  const [task, setTask] = useState('all');
   const [type, setType] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-
   useEffect(() => {
     Promise.all([
-      getHistory(),
       getRobots(),
       getTasks(),
     ])
-      .then(([historyData, robotData, taskData]) => {
-        const robotCodes = Object.fromEntries(
-          robotData.map((item) => [
-            item.id,
-            item.robot_code,
-          ])
-        );
-
-        const taskCodes = Object.fromEntries(
-          taskData.map((item) => [
-            item.id,
-            item.task_code,
-          ])
-        );
-
-        setEvents(
-          historyData.map((event) => ({
-            ...event,
-
-            time: formatTime(event.created_at),
-
-            type: getEventTypeLabel(
-              event.event_type
-            ),
-
-            robot:
-              event.robot_id === null
-                ? '—'
-                : robotCodes[event.robot_id] ??
-                  `Robot #${event.robot_id}`,
-
-            task:
-              event.task_id === null
-                ? '—'
-                : taskCodes[event.task_id] ??
-                  `Task #${event.task_id}`,
-          }))
-        );
-
-        setError(null);
+      .then(([robotData, taskData]) => {
+        setRobots(robotData);
+        setTasks(taskData);
       })
       .catch((err) => {
         console.error(err);
         setError(err.message);
-      })
-      .finally(() => {
-        setLoading(false);
       });
   }, []);
 
+  const filters = {
+    robot_id: robot === 'all' ? undefined : robot,
+    task_id: task === 'all' ? undefined : task,
+    event_type: type === 'all' ? undefined : type,
+    created_from: fromDate
+      ? `${fromDate}T00:00:00`
+      : undefined,
+    created_to: toDate
+      ? `${toDate}T23:59:59.999999`
+      : undefined,
+  };
 
   useEffect(() => {
-    return subscribeRealtime((message) => {
-      if (message.type !== 'EVENT_CREATED') {
-        return;
+    let active = true;
+
+    setLoading(true);
+    getHistory(filters)
+      .then((historyData) => {
+        if (active) {
+          setEvents(historyData.map(decorateEvent));
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.error(err);
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [robot, task, type, fromDate, toDate]);
+
+  useEffect(() => {
+    let active = true;
+
+    const refresh = () => {
+      getHistory(filters)
+        .then((historyData) => {
+          if (active) {
+            setEvents(historyData.map(decorateEvent));
+          }
+        })
+        .catch((err) => {
+          if (active) {
+            setError(err.message);
+          }
+        });
+    };
+
+    const unsubscribe = subscribeRealtime((message) => {
+      if (message.type === 'EVENT_CREATED') {
+        refresh();
       }
-
-      const event = message.data;
-      const decorated = {
-        ...event,
-        time: formatTime(event.created_at),
-        type: getEventTypeLabel(event.event_type),
-        robot: event.robot_id === null
-          ? '—'
-          : `Robot #${event.robot_id}`,
-        task: event.task_id === null
-          ? '—'
-          : `Task #${event.task_id}`,
-      };
-
-      setEvents((current) => [
-        decorated,
-        ...current.filter(
-          (item) => item.id !== decorated.id
-        ),
-      ]);
     });
-  }, []);
+    const unsubscribeStatus = subscribeRealtimeStatus(
+      (online, isReconnect) => {
+        if (online && isReconnect) {
+          refresh();
+        }
+      }
+    );
 
+    return () => {
+      active = false;
+      unsubscribe();
+      unsubscribeStatus();
+    };
+  }, [robot, task, type, fromDate, toDate]);
 
-  const query =
-    search.trim().toLowerCase();
-
-
+  const query = search.trim().toLowerCase();
   const filtered = events.filter((event) => {
-    const matchesRobot =
-      robot === 'all' ||
-      event.robot === robot;
+    if (!query) {
+      return true;
+    }
 
-    const matchesType =
-      type === 'all' ||
-      event.type === type;
-
-    const matchesSearch =
-      !query ||
-      event.task
-        .toLowerCase()
-        .includes(query) ||
-      event.message
-        .toLowerCase()
-        .includes(query);
-
-    return (
-      matchesRobot &&
-      matchesType &&
-      matchesSearch
+    return [
+      event.task,
+      event.message,
+      event.event_type,
+    ].some((value) =>
+      value?.toLowerCase().includes(query)
     );
   });
-
-
-  const robots = [
-    ...new Set(
-      events
-        .map((event) => event.robot)
-        .filter((value) => value !== '—')
-    ),
-  ];
-
 
   return (
     <div className="page-shell">
@@ -151,96 +161,77 @@ export default function History() {
           <span className="page-eyebrow">
             WRMS / LỊCH SỬ
           </span>
-
           <h1>Lịch sử vận hành</h1>
-
           <p>
-            Tra cứu nhiệm vụ, cảnh báo
-            và sự kiện vận hành của hệ thống.
+            Tra cứu nhiệm vụ, cảnh báo và sự kiện vận hành của hệ thống.
           </p>
         </div>
       </div>
-
 
       <section className="panel history-panel">
         <div className="history-toolbar">
           <div className="tasks-search">
             <Search size={15} />
-
             <input
               value={search}
-              placeholder="Tìm Task ID hoặc nội dung sự kiện..."
-              onChange={(event) =>
-                setSearch(event.target.value)
-              }
+              placeholder="Tìm task hoặc nội dung sự kiện..."
+              onChange={(event) => setSearch(event.target.value)}
             />
           </div>
 
-
           <select
             value={robot}
-            onChange={(event) =>
-              setRobot(event.target.value)
-            }
+            onChange={(event) => setRobot(event.target.value)}
           >
-            <option value="all">
-              Tất cả robot
-            </option>
-
-            {robots.map((robotCode) => (
-              <option
-                key={robotCode}
-                value={robotCode}
-              >
-                {robotCode}
+            <option value="all">Tất cả robot</option>
+            {robots.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.robot_code}
               </option>
             ))}
           </select>
 
+          <select
+            value={task}
+            onChange={(event) => setTask(event.target.value)}
+          >
+            <option value="all">Tất cả task</option>
+            {tasks.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.task_code}
+              </option>
+            ))}
+          </select>
 
           <select
             value={type}
-            onChange={(event) =>
-              setType(event.target.value)
-            }
+            onChange={(event) => setType(event.target.value)}
           >
-            <option value="all">
-              Tất cả loại
-            </option>
-
-            <option value="Nhiệm vụ">
-              Nhiệm vụ
-            </option>
-
-            <option value="Cảnh báo">
-              Cảnh báo
-            </option>
-
-            <option value="Định vị">
-              Định vị
-            </option>
-
-            <option value="Điều hướng">
-              Điều hướng
-            </option>
-
-            <option value="Robot">
-              Robot
-            </option>
-
-            <option value="Hệ thống">
-              Hệ thống
-            </option>
+            <option value="all">Tất cả event</option>
+            {EVENT_TYPES.map((eventType) => (
+              <option key={eventType} value={eventType}>
+                {eventType}
+              </option>
+            ))}
           </select>
+
+          <input
+            className="history-date-input"
+            type="date"
+            aria-label="Từ ngày"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+          />
+          <input
+            className="history-date-input"
+            type="date"
+            aria-label="Đến ngày"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+          />
         </div>
 
-
-        {error && (
-          <p>
-            Không thể tải lịch sử: {error}
-          </p>
-        )}
-
+        {error && <p>Không thể tải lịch sử: {error}</p>}
 
         <div className="history-table-wrapper">
           <table className="management-table history-table">
@@ -253,59 +244,45 @@ export default function History() {
                 <th>Sự kiện</th>
               </tr>
             </thead>
-
-
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan="5">
-                    Đang tải lịch sử...
-                  </td>
+                  <td colSpan="5">Đang tải lịch sử...</td>
                 </tr>
               )}
 
+              {!loading && !error && filtered.length === 0 && (
+                <tr>
+                  <td colSpan="5">Không có sự kiện.</td>
+                </tr>
+              )}
 
-              {!loading &&
-                !error &&
-                filtered.length === 0 && (
-                  <tr>
-                    <td colSpan="5">
-                      Không có sự kiện.
-                    </td>
-                  </tr>
-                )}
-
-
-              {!loading &&
-                filtered.map((event) => (
-                  <tr key={event.id}>
-                    <td className="mono">
-                      {event.time}
-                    </td>
-
-                    <td>
-                      {event.type}
-                    </td>
-
-                    <td>
-                      {event.robot}
-                    </td>
-
-                    <td className="text-orange">
-                      {event.task}
-                    </td>
-
-                    <td>
-                      {event.message}
-                    </td>
-                  </tr>
-                ))}
+              {!loading && filtered.map((event) => (
+                <tr key={event.id}>
+                  <td className="mono">{event.time}</td>
+                  <td>{event.type}</td>
+                  <td>{event.robot}</td>
+                  <td className="text-orange">{event.task}</td>
+                  <td>{event.message}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </section>
     </div>
   );
+}
+
+
+function decorateEvent(event) {
+  return {
+    ...event,
+    time: formatTime(event.created_at),
+    type: getEventTypeLabel(event.event_type),
+    robot: event.robot_code ?? '—',
+    task: event.task_code ?? '—',
+  };
 }
 
 
@@ -325,9 +302,7 @@ function getEventTypeLabel(eventType) {
     return 'Định vị';
   }
 
-  if (
-    eventType.includes('NAVIGATION')
-  ) {
+  if (eventType.includes('NAVIGATION')) {
     return 'Điều hướng';
   }
 
@@ -347,21 +322,13 @@ function formatTime(value) {
   const hasTimezone =
     value.endsWith('Z') ||
     /[+-]\d{2}:\d{2}$/.test(value);
-
-  const date = new Date(
-    hasTimezone
-      ? value
-      : `${value}Z`
-  );
+  const date = new Date(hasTimezone ? value : `${value}Z`);
 
   if (Number.isNaN(date.getTime())) {
     return value;
   }
 
-  return date.toLocaleTimeString(
-    'vi-VN',
-    {
-      hour12: false,
-    }
-  );
+  return date.toLocaleString('vi-VN', {
+    hour12: false,
+  });
 }

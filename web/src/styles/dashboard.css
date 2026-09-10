@@ -1472,3 +1472,336 @@ button { color: inherit; }
   font-family: "JetBrains Mono", monospace;
   font-size: 10px;
 }
+
+/* ==========================================
+   ROBOTS PAGE
+========================================== */
+
+.page-shell {
+  min-height: 100%;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  background: var(--pitch);
+}
+
+.robots-layout {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(230px, 0.28fr) minmax(0, 0.72fr);
+  gap: 12px;
+}
+
+.robot-list-panel {
+  min-height: 560px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.robot-list {
+  min-height: 0;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.robot-list-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--base);
+  border: 1px solid transparent;
+  color: var(--light);
+  text-align: left;
+  cursor: pointer;
+}
+
+.robot-list-item:hover {
+  background: var(--card);
+  border-color: var(--border-strong);
+}
+
+.robot-list-item--active {
+  background: rgba(255, 115, 0, 0.08);
+  border-color: rgba(255, 115, 0, 0.65);
+}
+
+.robot-list-marker {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid currentColor;
+}
+
+.robot-list-marker--orange { color: var(--orange); }
+.robot-list-marker--green { color: var(--green); }
+
+.robot-list-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.robot-list-copy strong {
+  overflow: hidden;
+  color: var(--light);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.robot-list-copy span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-badge--offline {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: var(--border-strong);
+  color: var(--muted);
+}
+
+.robot-detail-page {
+  min-width: 0;
+  min-height: 560px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.robot-detail-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.robot-detail-page-header h2 {
+  margin: 0;
+  color: var(--light);
+  font-family: var(--font-display);
+  font-size: 24px;
+  letter-spacing: 0.02em;
+}
+
+.robot-detail-page-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.robot-detail-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.robot-detail-state strong {
+  color: var(--light);
+  font-size: 11px;
+}
+
+.robot-detail-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.robot-tab {
+  flex: 0 0 auto;
+  padding: 10px 12px 8px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.robot-tab:hover { color: var(--light); }
+
+.robot-tab--active {
+  border-bottom-color: var(--orange);
+  color: var(--orange);
+}
+
+.robot-detail-content {
+  min-height: 0;
+  padding-top: 14px;
+  overflow: auto;
+}
+
+.robot-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.robot-info-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 3px 8px;
+  padding: 10px;
+  background: var(--base);
+  border: 1px solid var(--border);
+}
+
+.robot-info-card > svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--muted);
+}
+
+.robot-info-card span {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.robot-info-card strong {
+  overflow: hidden;
+  color: var(--light);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.robot-info-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.robot-info-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.robot-info-table {
+  border-top: 1px solid var(--border);
+}
+
+.robot-info-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.robot-info-row span {
+  color: var(--muted);
+}
+
+.robot-info-row strong {
+  color: var(--light);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sensor-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  background: var(--base);
+  border: 1px solid var(--border);
+}
+
+.sensor-item > svg { color: var(--muted); }
+
+.sensor-item div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sensor-item span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.sensor-item strong {
+  overflow: hidden;
+  color: var(--light);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-placeholder {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: var(--base);
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+  text-align: center;
+}
+
+.camera-placeholder svg { color: var(--border-strong); }
+
+.camera-placeholder strong {
+  color: var(--light);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.camera-placeholder span {
+  font-size: 11px;
+}

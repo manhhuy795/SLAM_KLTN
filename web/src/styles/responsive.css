@@ -107,6 +107,14 @@
 }
 
 @media (max-width: 1200px) {
+  .robots-layout {
+    grid-template-columns: minmax(210px, 0.34fr) minmax(0, 0.66fr);
+  }
+
+  .robot-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .tasks-workspace {
     grid-template-columns: 1fr;
   }
@@ -117,6 +125,34 @@
 }
 
 @media (max-width: 768px) {
+  .page-shell {
+    padding: 10px;
+  }
+
+  .robots-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .robot-list-panel,
+  .robot-detail-page {
+    min-height: auto;
+  }
+
+  .robot-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+  }
+
+  .robot-list-item {
+    min-width: 220px;
+  }
+
+  .robot-detail-page-header {
+    flex-direction: column;
+  }
+
   .tasks-page {
     padding: 10px;
   }
@@ -157,6 +193,20 @@
 }
 
 @media (max-width: 480px) {
+  .robot-overview-grid,
+  .sensor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .robot-info-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .robot-info-row strong {
+    text-align: left;
+  }
+
   .tasks-stats {
     grid-template-columns: 1fr 1fr;
   }

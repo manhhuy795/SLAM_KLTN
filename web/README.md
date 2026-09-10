@@ -121,6 +121,31 @@ VITE_WS_URL=ws://127.0.0.1:8000/ws
 
 Nếu không khai báo `.env.local`, frontend tự dùng hai giá trị localhost ở trên.
 
+## Demo qua Cloudflare Quick Tunnel
+
+Backend:
+
+```powershell
+cloudflared tunnel --url http://localhost:8000
+```
+
+Frontend chạy với URL backend tunnel:
+
+```powershell
+$env:VITE_API_BASE_URL="https://<BACKEND-TUNNEL>/api"
+$env:VITE_WS_URL="wss://<BACKEND-TUNNEL>/ws"
+npm run dev -- --host 0.0.0.0
+```
+
+Frontend tunnel:
+
+```powershell
+cloudflared tunnel --url http://localhost:5173
+```
+
+Gửi link frontend tunnel cho người khác. Quick Tunnel chỉ dùng cho demo/test;
+hostname có thể đổi khi restart. Không commit URL tunnel thật vào repository.
+
 Build production:
 
 ```powershell

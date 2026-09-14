@@ -1,6 +1,13 @@
+const defaultWsProtocol = typeof window !== "undefined"
+  && window.location.protocol === "https:"
+  ? "wss"
+  : "ws";
+const defaultWsHost = typeof window === "undefined"
+  ? "127.0.0.1"
+  : window.location.hostname;
 const WS_URL =
   import.meta.env.VITE_WS_URL ||
-  'ws://127.0.0.1:8000/ws';
+  `${defaultWsProtocol}://${defaultWsHost}:8000/ws`;
 
 let socket = null;
 let reconnectTimer = null;

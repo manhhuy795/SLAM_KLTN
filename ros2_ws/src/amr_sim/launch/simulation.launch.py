@@ -3,7 +3,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -11,6 +12,24 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_amr_sim = get_package_share_directory('amr_sim')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
+
+    vm_compat = DeclareLaunchArgument(
+        'vm_compat',
+        default_value='false',
+        description='Use headless OGRE2 rendering for VMs without a display'
+    )
+
+    headless_args = PythonExpression([
+        "'-s --headless-rendering' if '",
+        LaunchConfiguration('vm_compat'),
+        "' == 'true' else ''"
+    ])
+
+    render_engine = PythonExpression([
+        "'ogre2' if '",
+        LaunchConfiguration('vm_compat'),
+        "' == 'true' else 'ogre'"
+    ])
 
     world_file = os.path.join(
         pkg_amr_sim,
@@ -41,8 +60,13 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            'gz_args':
-                f'-r -v 3 {world_file} --render-engine ogre'
+            'gz_args': [
+                '-r -v 3 ',
+                headless_args,
+                ' --render-engine ',
+                render_engine,
+                f' {world_file}'
+            ]
         }.items(),
     )
 
@@ -66,9 +90,9 @@ def generate_launch_description():
         name='lidar_static_tf',
         output='screen',
         arguments=[
-            '--x', '0.08',
+            '--x', '0.18',
             '--y', '0.0',
-            '--z', '0.08',
+            '--z', '0.15',
             '--yaw', '0.0',
             '--pitch', '0.0',
             '--roll', '0.0',
@@ -99,6 +123,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        vm_compat,
         gazebo,
         bridge,
         lidar_tf,

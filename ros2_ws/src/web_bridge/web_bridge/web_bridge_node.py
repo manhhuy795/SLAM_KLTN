@@ -14,6 +14,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
+from .time_utils import ros_time_to_seconds, transform_timestamp
 
 
 def quaternion_to_yaw(quaternion):
@@ -21,10 +22,6 @@ def quaternion_to_yaw(quaternion):
         2.0 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
         1.0 - 2.0 * (quaternion.y ** 2 + quaternion.z ** 2),
     )
-
-
-def ros_time_to_seconds(stamp):
-    return float(stamp.sec) + float(stamp.nanosec) * 1e-9
 
 
 class WebBridge(Node):
@@ -164,7 +161,7 @@ class WebBridge(Node):
         return {
             "robot_id": self.robot_id,
             "frame_id": self.map_frame,
-            "timestamp": time.time(),
+            "timestamp": transform_timestamp(transform, time.time()),
             "x": float(translation.x),
             "y": float(translation.y),
             "yaw": quaternion_to_yaw(transform.transform.rotation),

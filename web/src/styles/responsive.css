@@ -193,6 +193,15 @@
 }
 
 @media (max-width: 480px) {
+  .slam-status-strip {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .slam-status-item {
+    flex: 0 0 auto;
+  }
+
   .robot-overview-grid,
   .sensor-grid {
     grid-template-columns: 1fr;

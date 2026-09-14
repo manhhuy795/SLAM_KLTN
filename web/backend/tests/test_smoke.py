@@ -338,6 +338,155 @@ class WrmsSmokeTest(unittest.TestCase):
 
         self.assert_websocket_event(robot["id"], robot["robot_code"])
 
+    def test_ros_bridge_snapshots(self):
+        status, ros_map = self.request(
+            "/ros/map",
+            "POST",
+            {
+                "width": 2,
+                "height": 2,
+                "resolution": 0.05,
+                "origin": {"x": -1, "y": -1, "yaw": 0},
+                "frame_id": "map",
+                "timestamp": 1,
+                "map_hash": "smoke-map",
+                "data": [-1, 0, 100, 0],
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(ros_map["width"], 2)
+
+        status, pose = self.request(
+            "/ros/pose",
+            "POST",
+            {
+                "robot_id": 1,
+                "frame_id": "map",
+                "timestamp": 1,
+                "x": 0.2,
+                "y": 0.3,
+                "yaw": 0.4,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(pose["frame_id"], "map")
+
+        status, ros_status = self.request(
+            "/ros/state",
+            "POST",
+            {
+                "bridge_online": True,
+                "slam_online": True,
+                "map_status": "RECEIVED",
+                "lidar_online": True,
+                "localization_available": True,
+                "tf_available": True,
+                "scan_rate_hz": 10,
+                "last_scan_age_ms": 25,
+                "timestamp": 1,
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(ros_status["tf_available"])
+
+        status, current_map = self.request("/ros/map")
+        self.assertEqual(status, 200)
+        self.assertEqual(current_map["map_hash"], "smoke-map")
+        status, current_pose = self.request("/ros/pose")
+        self.assertEqual(status, 200)
+        self.assertEqual(current_pose["robot_id"], 1)
+        status, current_state = self.request("/ros/state")
+        self.assertEqual(status, 200)
+        self.assertTrue(current_state["bridge_online"])
+
+    def test_ros_websocket_events(self):
+        try:
+            import websockets
+        except ImportError:
+            self.skipTest("websockets is not installed")
+
+        received = []
+        ready = threading.Event()
+        failure = []
+        expected = {
+            "SLAM_MAP_UPDATED",
+            "ROBOT_POSE_UPDATED",
+            "SLAM_STATUS_UPDATED",
+        }
+
+        async def listen():
+            try:
+                async with websockets.connect(self.ws_url) as websocket:
+                    ready.set()
+                    deadline = time.time() + 5
+                    while time.time() < deadline:
+                        timeout = max(0.1, deadline - time.time())
+                        message = json.loads(
+                            await asyncio.wait_for(
+                                websocket.recv(),
+                                timeout=timeout,
+                            )
+                        )
+                        received.append(message)
+                        if {item.get("type") for item in received} >= expected:
+                            return
+            except Exception as error:
+                failure.append(error)
+                ready.set()
+
+        import asyncio
+
+        thread = threading.Thread(
+            target=lambda: asyncio.run(listen()),
+            daemon=True,
+        )
+        thread.start()
+        self.assertTrue(ready.wait(timeout=5))
+
+        self.request(
+            "/ros/map",
+            "POST",
+            {
+                "width": 1,
+                "height": 1,
+                "resolution": 0.05,
+                "origin": {"x": 0, "y": 0, "yaw": 0},
+                "frame_id": "map",
+                "timestamp": 2,
+                "map_hash": "ws-map",
+                "data": [0],
+            },
+        )
+        self.request(
+            "/ros/pose",
+            "POST",
+            {
+                "robot_id": 1,
+                "frame_id": "map",
+                "timestamp": 2,
+                "x": 0,
+                "y": 0,
+                "yaw": 0,
+            },
+        )
+        self.request(
+            "/ros/state",
+            "POST",
+            {
+                "bridge_online": True,
+                "slam_online": True,
+                "map_status": "RECEIVED",
+                "lidar_online": True,
+                "localization_available": True,
+                "tf_available": True,
+                "timestamp": 2,
+            },
+        )
+
+        thread.join(timeout=6)
+        self.assertFalse(failure, failure)
+        self.assertTrue(expected <= {item.get("type") for item in received})
+
     def assert_websocket_event(self, robot_id, robot_code):
         try:
             import websockets

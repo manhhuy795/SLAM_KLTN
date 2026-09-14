@@ -35,7 +35,8 @@ location, cảnh báo và lịch sử. Chưa có robot thật trong vòng test n
 
 Không thuộc scope hiện tại:
 
-- ROS2, MQTT.
+- Nav2 goal, click-to-navigate, map save/load, and trajectory.
+- MQTT and robot hardware integration.
 - PID, encoder, motor, line sensor và firmware.
 - AprilTag, camera stream và upload ảnh thật.
 - Authentication/session operator thật.
@@ -302,6 +303,62 @@ COMMAND_FAILED
 
 Frontend chỉ fetch REST lần đầu; các thay đổi sau đó đi qua một WebSocket dùng
 chung. Không có polling API 5 giây.
+
+## ROS2 SLAM web bridge (Milestone 1)
+
+The ROS2 bridge is a separate process. FastAPI does not import `rclpy` and
+continues to run when ROS2, SLAM, LiDAR, or TF is offline.
+
+Confirmed ROS interfaces:
+
+```text
+/map  nav_msgs/msg/OccupancyGrid
+/scan sensor_msgs/msg/LaserScan
+/tf   map -> base_link lookup
+```
+
+Frames are `map`, `odom`, and `base_link` as defined by
+`ros2_ws/src/amr_sim/config/slam_params.yaml`. The bridge never uses
+`odom -> base_link` as the global map pose.
+
+Build and run the bridge in a ROS2 environment:
+
+```bash
+cd ros2_ws
+colcon build --symlink-install --packages-select web_bridge
+source install/setup.bash
+ros2 launch web_bridge web_bridge.launch.py
+```
+
+Start the existing Gazebo/ROS bridge and SLAM process separately. The current
+`amr_sim` launch provides `/scan`, `/odom`, and `/tf`; SLAM Toolbox must be
+running with `slam_params.yaml` to publish `/map`.
+
+The bridge sends only changed maps, throttled pose updates, and compact LiDAR
+telemetry. Raw `LaserScan` data is never sent to the browser.
+
+New backend endpoints:
+
+```text
+GET  /api/ros/state
+GET  /api/ros/map
+GET  /api/ros/pose
+POST /api/ros/state       # bridge ingestion
+POST /api/ros/map         # bridge ingestion
+POST /api/ros/pose        # bridge ingestion
+```
+
+New WebSocket events:
+
+```text
+SLAM_MAP_UPDATED
+ROBOT_POSE_UPDATED
+SLAM_STATUS_UPDATED
+```
+
+The frontend fetches the last ROS snapshot through REST and receives later
+updates through the existing shared WebSocket. If no map is available, the
+existing WRMS warehouse schematic remains visible as a fallback.
 
 ## End-to-end test flow
 

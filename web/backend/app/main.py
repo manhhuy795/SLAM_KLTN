@@ -9,6 +9,7 @@ from app.api.routes.tasks import router as tasks_router
 from app.api.routes.alerts import router as alerts_router
 from app.api.routes.history import router as history_router
 from app.api.routes.operators import router as operators_router
+from app.api.routes.ros import router as ros_router
 from app.services.realtime import manager
 
 app = FastAPI(
@@ -96,5 +97,10 @@ app.include_router(
 
 app.include_router(
     operators_router,
+    prefix="/api",
+)
+
+app.include_router(
+    ros_router,
     prefix="/api",
 )

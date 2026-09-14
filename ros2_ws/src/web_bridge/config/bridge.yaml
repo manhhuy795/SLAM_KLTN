@@ -1,0 +1,12 @@
+web_bridge:
+  ros__parameters:
+    backend_url: http://127.0.0.1:8000
+    robot_id: 1
+    map_topic: /map
+    scan_topic: /scan
+    map_frame: map
+    robot_base_frame: base_link
+    pose_publish_period_sec: 0.2
+    heartbeat_period_sec: 1.0
+    scan_stale_sec: 1.0
+    map_stale_sec: 10.0

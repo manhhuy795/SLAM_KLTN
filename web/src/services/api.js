@@ -226,3 +226,20 @@ export function createTaskProof(taskId, data) {
 export function getTaskProofs(taskId) {
   return request(`/tasks/${taskId}/proofs`);
 }
+
+
+// ======================
+// ROS BRIDGE
+// ======================
+
+export function getRosState() {
+  return request("/ros/state");
+}
+
+export function getRosMap() {
+  return request("/ros/map");
+}
+
+export function getRosPose() {
+  return request("/ros/pose");
+}

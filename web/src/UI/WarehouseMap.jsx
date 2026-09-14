@@ -3,12 +3,16 @@ import { useEffect, useState } from 'react';
 import {
   getLocations,
   getRobots,
+  getRosMap,
+  getRosPose,
+  getRosState,
   getTasks,
 } from '../services/api';
 import {
   subscribeRealtime,
   subscribeRealtimeStatus,
 } from '../services/realtime';
+import SlamMap from './SlamMap';
 
 
 const MAP_WIDTH_METERS = 12;
@@ -30,6 +34,10 @@ export default function WarehouseMap() {
   const [locations, setLocations] = useState([]);
   const [robots, setRobots] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [slamMap, setSlamMap] = useState(null);
+  const [slamPose, setSlamPose] = useState(null);
+  const [slamStatus, setSlamStatus] = useState(null);
+  const [statusNow, setStatusNow] = useState(() => Date.now());
 
   const [error, setError] = useState(null);
 
@@ -44,10 +52,16 @@ export default function WarehouseMap() {
           locationData,
           robotData,
           taskData,
+          mapData,
+          poseData,
+          statusData,
         ] = await Promise.all([
           getLocations(),
           getRobots(),
           getTasks(),
+          getRosMap(),
+          getRosPose(),
+          getRosState(),
         ]);
 
         if (cancelled) {
@@ -57,6 +71,9 @@ export default function WarehouseMap() {
         setLocations(locationData);
         setRobots(robotData);
         setTasks(taskData);
+        setSlamMap(mapData);
+        setSlamPose(poseData);
+        setSlamStatus(statusData);
         setError(null);
       } catch (err) {
         if (!cancelled) {
@@ -76,6 +93,16 @@ export default function WarehouseMap() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+
+  useEffect(() => {
+    const interval = window.setInterval(
+      () => setStatusNow(Date.now()),
+      1000
+    );
+
+    return () => window.clearInterval(interval);
   }, []);
 
 
@@ -112,6 +139,18 @@ export default function WarehouseMap() {
             : [...current, message.data];
         });
       }
+
+      if (message.type === 'SLAM_MAP_UPDATED') {
+        setSlamMap(message.data);
+      }
+
+      if (message.type === 'ROBOT_POSE_UPDATED') {
+        setSlamPose(message.data);
+      }
+
+      if (message.type === 'SLAM_STATUS_UPDATED') {
+        setSlamStatus(message.data);
+      }
     });
 
     const unsubscribeStatus = subscribeRealtimeStatus(
@@ -124,10 +163,16 @@ export default function WarehouseMap() {
           getLocations(),
           getRobots(),
           getTasks(),
-        ]).then(([locationData, robotData, taskData]) => {
+          getRosMap(),
+          getRosPose(),
+          getRosState(),
+        ]).then(([locationData, robotData, taskData, mapData, poseData, statusData]) => {
           setLocations(locationData);
           setRobots(robotData);
           setTasks(taskData);
+          setSlamMap(mapData);
+          setSlamPose(poseData);
+          setSlamStatus(statusData);
         }).catch((err) => {
           setError(err.message);
         });
@@ -157,9 +202,18 @@ export default function WarehouseMap() {
   const unpositionedCount =
     robots.length - positionedRobots.length;
 
+  const visibleSlamStatus = getVisibleSlamStatus(
+    slamStatus,
+    statusNow
+  );
+
+  const mapTitle = slamMap
+    ? 'SLAM MAP (OCCUPANCYGRID)'
+    : 'WAREHOUSE MAP (TESTBED)';
+
 
   return (
-    <section className="panel map-panel">
+    <section className="panel map-panel" aria-label={mapTitle}>
       <div className="section-header map-section-header">
         <div className="section-title-group">
           <span className="section-indicator section-indicator--orange" />
@@ -198,6 +252,9 @@ export default function WarehouseMap() {
       </div>
 
 
+      <SlamStatusStrip status={visibleSlamStatus} />
+
+
       {error && (
         <div className="map-error">
           Không thể cập nhật bản đồ: {error}
@@ -205,6 +262,12 @@ export default function WarehouseMap() {
       )}
 
 
+      {slamMap ? (
+        <SlamMap
+          map={slamMap}
+          pose={slamPose}
+        />
+      ) : (
       <div className="map-canvas">
         <svg
           viewBox="0 0 640 340"
@@ -310,7 +373,79 @@ export default function WarehouseMap() {
           </div>
         )}
       </div>
+      )}
     </section>
+  );
+}
+
+
+function getVisibleSlamStatus(status, now) {
+  if (!status) {
+    return null;
+  }
+
+  const stale = status.timestamp !== null
+    && status.timestamp !== undefined
+    && now / 1000 - status.timestamp > 3;
+
+  if (!stale) {
+    return status;
+  }
+
+  return {
+    ...status,
+    bridge_online: false,
+    slam_online: false,
+    lidar_online: false,
+    localization_available: false,
+    tf_available: false,
+  };
+}
+
+
+function SlamStatusStrip({ status }) {
+  const values = status || {
+    bridge_online: false,
+    slam_online: false,
+    map_status: 'WAITING',
+    lidar_online: false,
+    localization_available: false,
+    tf_available: false,
+  };
+
+  return (
+    <div className="slam-status-strip" aria-label="SLAM status">
+      <RosStatus label="ROS BRIDGE" online={values.bridge_online} />
+      <RosStatus label="SLAM" online={values.slam_online} />
+      <RosStatus
+        label="MAP"
+        online={values.map_status === 'RECEIVED'}
+        value={values.map_status}
+      />
+      <RosStatus
+        label="LIDAR"
+        online={values.lidar_online}
+        value={values.lidar_online && values.scan_rate_hz
+          ? `${values.scan_rate_hz.toFixed(1)} Hz`
+          : undefined}
+      />
+      <RosStatus
+        label="LOCALIZATION"
+        online={values.localization_available}
+      />
+      <RosStatus label="TF map→base" online={values.tf_available} />
+    </div>
+  );
+}
+
+
+function RosStatus({ label, online, value }) {
+  return (
+    <span className={`slam-status-item ${online ? 'slam-status-item--online' : ''}`}>
+      <span className="slam-status-dot" />
+      <span>{label}</span>
+      <strong>{value || (online ? 'ONLINE' : 'OFFLINE')}</strong>
+    </span>
   );
 }
 

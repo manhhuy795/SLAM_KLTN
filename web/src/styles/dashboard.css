@@ -1805,3 +1805,78 @@ button { color: inherit; }
 .camera-placeholder span {
   font-size: 11px;
 }
+
+/* ==========================================
+   ROS / SLAM MAP
+========================================== */
+
+.slam-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.slam-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.slam-status-item strong {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.slam-status-item--online {
+  border-color: rgba(139, 168, 136, 0.55);
+  color: var(--green);
+}
+
+.slam-status-item--online strong {
+  color: var(--green);
+}
+
+.slam-status-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--border-strong);
+}
+
+.slam-status-item--online .slam-status-dot {
+  background: var(--green);
+}
+
+.slam-map-canvas {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080b0f;
+}
+
+.slam-map-canvas canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.slam-map-meta {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 7px;
+  background: rgba(8, 9, 12, 0.9);
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

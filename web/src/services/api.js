@@ -243,3 +243,24 @@ export function getRosMap() {
 export function getRosPose() {
   return request("/ros/pose");
 }
+
+export function getNavigationStatus() {
+  return request("/ros/navigation/status");
+}
+
+export function getNavigationPath() {
+  return request("/ros/navigation/path");
+}
+
+export function sendNavigationGoal(data) {
+  return request("/ros/navigation/goal", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cancelNavigation() {
+  return request("/ros/navigation/cancel", {
+    method: "POST",
+  });
+}

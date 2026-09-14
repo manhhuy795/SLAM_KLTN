@@ -1880,3 +1880,13 @@ button { color: inherit; }
   font-family: var(--font-mono);
   font-size: 10px;
 }
+
+.navigation-panel { padding: 12px; flex: 0 0 auto; }
+.navigation-status-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+.navigation-status-grid span { border: 1px solid var(--border); padding: 5px 6px; color: var(--muted); font: 10px var(--font-mono); }
+.navigation-status-grid strong { display: block; color: var(--light); margin-top: 3px; }
+.navigation-form { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; }
+.navigation-form label { display: grid; gap: 3px; color: var(--muted); font: 10px var(--font-mono); }
+.navigation-form input { width: 76px; padding: 5px 6px; color: var(--light); background: var(--pitch); border: 1px solid var(--border); }
+.navigation-form button { min-height: 28px; }
+@media (max-width: 900px) { .navigation-status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

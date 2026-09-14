@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 
 import {
   getLocations,
+  getNavigationPath,
+  getNavigationStatus,
   getRobots,
   getRosMap,
   getRosPose,
@@ -37,6 +39,8 @@ export default function WarehouseMap() {
   const [slamMap, setSlamMap] = useState(null);
   const [slamPose, setSlamPose] = useState(null);
   const [slamStatus, setSlamStatus] = useState(null);
+  const [navigationStatus, setNavigationStatus] = useState(null);
+  const [navigationPath, setNavigationPath] = useState(null);
   const [statusNow, setStatusNow] = useState(() => Date.now());
 
   const [error, setError] = useState(null);
@@ -55,6 +59,8 @@ export default function WarehouseMap() {
           mapData,
           poseData,
           statusData,
+          navigationStatusData,
+          navigationPathData,
         ] = await Promise.all([
           getLocations(),
           getRobots(),
@@ -62,6 +68,8 @@ export default function WarehouseMap() {
           getRosMap(),
           getRosPose(),
           getRosState(),
+          getNavigationStatus(),
+          getNavigationPath(),
         ]);
 
         if (cancelled) {
@@ -74,6 +82,8 @@ export default function WarehouseMap() {
         setSlamMap(mapData);
         setSlamPose(poseData);
         setSlamStatus(statusData);
+        setNavigationStatus(navigationStatusData);
+        setNavigationPath(navigationPathData);
         setError(null);
       } catch (err) {
         if (!cancelled) {
@@ -151,6 +161,13 @@ export default function WarehouseMap() {
       if (message.type === 'SLAM_STATUS_UPDATED') {
         setSlamStatus(message.data);
       }
+      if (message.type === 'NAVIGATION_STATUS_UPDATED') {
+        setNavigationStatus(message.data);
+      }
+
+      if (message.type === 'NAVIGATION_PATH_UPDATED') {
+        setNavigationPath(message.data?.poses?.length ? message.data : null);
+      }
     });
 
     const unsubscribeStatus = subscribeRealtimeStatus(
@@ -166,13 +183,17 @@ export default function WarehouseMap() {
           getRosMap(),
           getRosPose(),
           getRosState(),
-        ]).then(([locationData, robotData, taskData, mapData, poseData, statusData]) => {
+          getNavigationStatus(),
+          getNavigationPath(),
+        ]).then(([locationData, robotData, taskData, mapData, poseData, statusData, navigationStatusData, navigationPathData]) => {
           setLocations(locationData);
           setRobots(robotData);
           setTasks(taskData);
           setSlamMap(mapData);
           setSlamPose(poseData);
           setSlamStatus(statusData);
+          setNavigationStatus(navigationStatusData);
+          setNavigationPath(navigationPathData);
         }).catch((err) => {
           setError(err.message);
         });
@@ -266,6 +287,8 @@ export default function WarehouseMap() {
         <SlamMap
           map={slamMap}
           pose={slamPose}
+          goal={navigationStatus?.goal}
+          path={navigationPath}
         />
       ) : (
       <div className="map-canvas">

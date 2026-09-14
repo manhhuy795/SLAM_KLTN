@@ -10,6 +10,7 @@ class RosState:
         self._last_heartbeat_monotonic = None
         self._status = {
             "bridge_online": False,
+            "nav2_online": False,
             "slam_online": False,
             "map_status": "WAITING",
             "lidar_online": False,
@@ -42,6 +43,7 @@ class RosState:
             if heartbeat_missing or heartbeat_expired:
                 status.update({
                     "bridge_online": False,
+                    "nav2_online": False,
                     "slam_online": False,
                     "lidar_online": False,
                     "localization_available": False,

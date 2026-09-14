@@ -4,6 +4,9 @@ web_bridge:
     robot_id: 1
     map_topic: /map
     scan_topic: /scan
+    navigation_path_topic: /plan
+    nav2_action_name: /navigate_to_pose
+    navigation_poll_period_sec: 0.2
     map_frame: map
     robot_base_frame: base_link
     pose_publish_period_sec: 0.2

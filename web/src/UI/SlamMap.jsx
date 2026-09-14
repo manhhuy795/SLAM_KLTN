@@ -16,7 +16,7 @@ function occupancyColor(value) {
 }
 
 
-export default function SlamMap({ map, pose }) {
+export default function SlamMap({ map, pose, goal, path }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -49,13 +49,55 @@ export default function SlamMap({ map, pose }) {
     context.imageSmoothingEnabled = false;
     context.putImageData(image, 0, 0);
 
+    if (path?.poses?.length > 1 && path.frame_id === map.frame_id) {
+      context.strokeStyle = "#38bdf8";
+      context.lineWidth = Math.max(1, Math.min(width, height) / 180);
+      context.beginPath();
+      path.poses.forEach((point, index) => {
+        const marker = worldToCanvas(
+          map,
+          point.x,
+          point.y,
+          width,
+          height,
+        );
+        if (index === 0) {
+          context.moveTo(marker.x, marker.y);
+        } else {
+          context.lineTo(marker.x, marker.y);
+        }
+      });
+      context.stroke();
+    }
+
+    if (goal && goal.frame_id !== map.frame_id) {
+      return undefined;
+    }
+
+    if (goal) {
+      const marker = worldToCanvas(
+        map,
+        goal.x,
+        goal.y,
+        width,
+        height,
+      );
+      context.strokeStyle = "#f59e0b";
+      context.fillStyle = "#f59e0b";
+      context.lineWidth = Math.max(1, Math.min(width, height) / 180);
+      context.beginPath();
+      context.arc(marker.x, marker.y, 4, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+    }
+
     if (pose && pose.frame_id === map.frame_id) {
       const marker = worldToCanvas(
         map,
         pose.x,
         pose.y,
         width,
-        height
+        height,
       );
       const scale = Math.max(8, Math.min(width, height) * 0.035);
 
@@ -69,23 +111,23 @@ export default function SlamMap({ map, pose }) {
       context.moveTo(marker.x, marker.y);
       context.lineTo(
         marker.x + Math.cos(pose.yaw) * scale,
-        marker.y - Math.sin(pose.yaw) * scale
+        marker.y - Math.sin(pose.yaw) * scale,
       );
       context.stroke();
     }
 
     return undefined;
-  }, [map, pose]);
+  }, [map, pose, goal, path]);
 
   return (
     <div className="map-canvas slam-map-canvas">
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label="OccupancyGrid SLAM và vị trí robot"
+        aria-label="SLAM occupancy grid and robot pose"
       />
       <div className="slam-map-meta">
-        {map.width} × {map.height} ô · {map.resolution.toFixed(3)} m/ô · {map.frame_id}
+        {map.width} x {map.height} cells � {map.resolution.toFixed(3)} m/cell � {map.frame_id}
       </div>
     </div>
   );

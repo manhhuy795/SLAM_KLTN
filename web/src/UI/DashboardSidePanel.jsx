@@ -1,3 +1,4 @@
+import NavigationPanel from "./NavigationPanel";
 import { useEffect, useState } from 'react';
 
 import {
@@ -215,6 +216,7 @@ export default function DashboardSidePanel({
 
   return (
     <>
+      <NavigationPanel />
       <section className="panel alerts-panel">
         <div className="section-header">
           <div className="section-title-group">

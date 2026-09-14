@@ -1,19 +1,26 @@
 import hashlib
 import json
+import math
 import queue
 import threading
 import time
 from collections import deque
 from math import atan2
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import rclpy
-from nav_msgs.msg import OccupancyGrid
+from action_msgs.msg import GoalStatus
+from geometry_msgs.msg import PoseStamped
+from nav2_msgs.action import NavigateToPose
+from nav_msgs.msg import OccupancyGrid, Path
+from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
+
 from .time_utils import ros_time_to_seconds, transform_timestamp
 
 
@@ -32,17 +39,28 @@ class WebBridge(Node):
         self.declare_parameter("robot_id", 1)
         self.declare_parameter("map_topic", "/map")
         self.declare_parameter("scan_topic", "/scan")
+        self.declare_parameter("navigation_path_topic", "/plan")
+        self.declare_parameter("nav2_action_name", "/navigate_to_pose")
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("robot_base_frame", "base_link")
         self.declare_parameter("pose_publish_period_sec", 0.2)
         self.declare_parameter("heartbeat_period_sec", 1.0)
         self.declare_parameter("scan_stale_sec", 1.0)
         self.declare_parameter("map_stale_sec", 10.0)
+        self.declare_parameter("navigation_poll_period_sec", 0.2)
 
-        self.backend_url = str(self.get_parameter("backend_url").value).rstrip("/")
+        self.backend_url = str(
+            self.get_parameter("backend_url").value
+        ).rstrip("/")
         self.robot_id = int(self.get_parameter("robot_id").value)
         self.map_topic = str(self.get_parameter("map_topic").value)
         self.scan_topic = str(self.get_parameter("scan_topic").value)
+        self.navigation_path_topic = str(
+            self.get_parameter("navigation_path_topic").value
+        )
+        self.nav2_action_name = str(
+            self.get_parameter("nav2_action_name").value
+        )
         self.map_frame = str(self.get_parameter("map_frame").value)
         self.robot_base_frame = str(
             self.get_parameter("robot_base_frame").value
@@ -58,6 +76,9 @@ class WebBridge(Node):
         )
         self.map_stale_sec = float(
             self.get_parameter("map_stale_sec").value
+        )
+        self.navigation_poll_period = float(
+            self.get_parameter("navigation_poll_period_sec").value
         )
 
         self.tf_buffer = Buffer()
@@ -80,6 +101,25 @@ class WebBridge(Node):
             self._scan_callback,
             10,
         )
+        self.path_sub = self.create_subscription(
+            Path,
+            self.navigation_path_topic,
+            self._path_callback,
+            10,
+        )
+
+        self.nav_client = ActionClient(
+            self,
+            NavigateToPose,
+            self.nav2_action_name,
+        )
+        self._navigation_command = None
+        self._navigation_goal_handle = None
+        self._navigation_state = "IDLE"
+        self._navigation_feedback = {}
+        self._last_path_signature = None
+        self._next_navigation_poll = 0.0
+        self._next_navigation_status = 0.0
 
         self._latest_map = None
         self._latest_map_hash = None
@@ -93,7 +133,7 @@ class WebBridge(Node):
         self._next_heartbeat = 0.0
         self._last_warning = 0.0
 
-        self._outbox = queue.Queue(maxsize=16)
+        self._outbox = queue.Queue(maxsize=32)
         self._stop_sender = threading.Event()
         self._sender = threading.Thread(
             target=self._send_loop,
@@ -146,6 +186,29 @@ class WebBridge(Node):
         now = time.monotonic()
         self._last_scan_received = now
         self._scan_times.append(now)
+
+    def _path_callback(self, message):
+        if self._navigation_command is None:
+            return
+
+        poses = [
+            {
+                "x": float(pose.pose.position.x),
+                "y": float(pose.pose.position.y),
+            }
+            for pose in message.poses
+        ]
+        payload = {
+            "command_id": self._navigation_command["id"],
+            "frame_id": message.header.frame_id or self.map_frame,
+            "poses": poses,
+        }
+        signature = json.dumps(payload, separators=(",", ":"))
+        if signature == self._last_path_signature:
+            return
+
+        self._last_path_signature = signature
+        self._enqueue("/api/ros/navigation/path", payload)
 
     def _lookup_pose(self):
         try:
@@ -213,6 +276,7 @@ class WebBridge(Node):
                 "/api/ros/state",
                 {
                     "bridge_online": True,
+                    "nav2_online": self.nav_client.server_is_ready(),
                     "slam_online": map_fresh,
                     "map_status": "RECEIVED" if map_received else "WAITING",
                     "lidar_online": lidar_online,
@@ -223,6 +287,246 @@ class WebBridge(Node):
                     "timestamp": time.time(),
                 },
             )
+
+        if now >= self._next_navigation_poll:
+            self._next_navigation_poll = (
+                now + self.navigation_poll_period
+            )
+            self._poll_navigation_command()
+
+        if (
+            self._navigation_command is not None
+            and now >= self._next_navigation_status
+        ):
+            self._next_navigation_status = now + 0.2
+            self._queue_navigation_status()
+
+    def _poll_navigation_command(self):
+        if not self.nav_client.server_is_ready():
+            return
+
+        command = self._get_json("/api/ros/navigation/command")
+        if not command:
+            return
+
+        if command["command"] == "NAVIGATE_TO_POSE":
+            if self._navigation_command is not None:
+                return
+            self._navigation_command = command
+            self._navigation_state = "SENDING"
+            self._navigation_feedback = {}
+            self._last_path_signature = None
+            self._send_navigation_goal(command)
+            return
+
+        if command["command"] == "CANCEL":
+            if self._navigation_goal_handle is None:
+                self._post_navigation_terminal(
+                    command["id"],
+                    "FAILED",
+                    0,
+                    "No active Nav2 goal",
+                )
+                return
+            cancel_future = (
+                self._navigation_goal_handle.cancel_goal_async()
+            )
+            active_command_id = self._navigation_command["id"]
+            cancel_future.add_done_callback(
+                lambda future: self._cancel_response_callback(
+                    future,
+                    active_command_id,
+                )
+            )
+
+    def _send_navigation_goal(self, command):
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = self.map_frame
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = float(command["x"])
+        goal.pose.pose.position.y = float(command["y"])
+        goal.pose.pose.orientation.z = math.sin(float(command["yaw"]) / 2.0)
+        goal.pose.pose.orientation.w = math.cos(float(command["yaw"]) / 2.0)
+
+        send_future = self.nav_client.send_goal_async(
+            goal,
+            feedback_callback=self._feedback_callback,
+        )
+        send_future.add_done_callback(self._goal_response_callback)
+
+    def _goal_response_callback(self, future):
+        command = self._navigation_command
+        if command is None:
+            return
+        command_id = command["id"]
+        try:
+            goal_handle = future.result()
+        except Exception as error:
+            self._post_navigation_terminal(
+                command_id,
+                "FAILED",
+                0,
+                str(error),
+            )
+            return
+
+        if not goal_handle.accepted:
+            self._post_navigation_terminal(
+                command_id,
+                "REJECTED",
+                0,
+                "Nav2 rejected the goal",
+            )
+            return
+
+        self._navigation_goal_handle = goal_handle
+        self._navigation_state = "NAVIGATING"
+        self._queue_navigation_status(force=True)
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._result_callback)
+
+    def _feedback_callback(self, feedback_message):
+        feedback = feedback_message.feedback
+        current = feedback.current_pose.pose
+        self._navigation_feedback = {
+            "distance_remaining": self._finite_or_none(
+                feedback.distance_remaining
+            ),
+            "current_pose": {
+                "x": float(current.position.x),
+                "y": float(current.position.y),
+                "yaw": quaternion_to_yaw(current.orientation),
+            },
+            "navigation_time": (
+                float(feedback.navigation_time.sec)
+                + float(feedback.navigation_time.nanosec) * 1e-9
+            ),
+            "number_of_recoveries": max(
+                0,
+                int(feedback.number_of_recoveries),
+            ),
+        }
+
+    def _cancel_response_callback(self, future, command_id):
+        try:
+            response = future.result()
+            if not response.goals_canceling:
+                self._post_navigation_terminal(
+                    command_id,
+                    "FAILED",
+                    0,
+                    "Nav2 did not accept cancel",
+                )
+        except Exception as error:
+            self._post_navigation_terminal(
+                command_id,
+                "FAILED",
+                0,
+                str(error),
+            )
+
+    def _result_callback(self, future):
+        command = self._navigation_command
+        if command is None:
+            return
+        command_id = command["id"]
+        try:
+            result_wrapper = future.result()
+            result = result_wrapper.result
+            if result_wrapper.status == GoalStatus.STATUS_CANCELED:
+                state = "CANCELLED"
+            elif (
+                result_wrapper.status == GoalStatus.STATUS_SUCCEEDED
+                and int(result.error_code) == 0
+            ):
+                state = "SUCCEEDED"
+            else:
+                state = "FAILED"
+            if state == "SUCCEEDED":
+                self._navigation_feedback["distance_remaining"] = 0.0
+            self._post_navigation_terminal(
+                command_id,
+                state,
+                int(result.error_code),
+                str(result.error_msg),
+            )
+        except Exception as error:
+            self._post_navigation_terminal(
+                command_id,
+                "FAILED",
+                0,
+                str(error),
+            )
+
+    def _queue_navigation_status(self, force=False):
+        if self._navigation_command is None:
+            return
+
+        if not force and self._navigation_state == "IDLE":
+            return
+
+        payload = {
+            "command_id": self._navigation_command["id"],
+            "state": self._navigation_state,
+            "distance_remaining": self._navigation_feedback.get(
+                "distance_remaining"
+            ),
+            "current_pose": self._navigation_feedback.get("current_pose"),
+            "navigation_time": self._navigation_feedback.get(
+                "navigation_time"
+            ),
+            "number_of_recoveries": self._navigation_feedback.get(
+                "number_of_recoveries",
+                0,
+            ),
+            "error_code": 0,
+            "error_message": "",
+        }
+        self._enqueue(
+            "/api/ros/navigation/command/"
+            f"{self._navigation_command['id']}/status",
+            payload,
+        )
+
+    def _post_navigation_terminal(
+        self,
+        command_id,
+        state,
+        error_code,
+        error_message,
+    ):
+        payload = {
+            "command_id": command_id,
+            "state": state,
+            "distance_remaining": self._navigation_feedback.get(
+                "distance_remaining"
+            ),
+            "current_pose": self._navigation_feedback.get("current_pose"),
+            "navigation_time": self._navigation_feedback.get(
+                "navigation_time"
+            ),
+            "number_of_recoveries": self._navigation_feedback.get(
+                "number_of_recoveries",
+                0,
+            ),
+            "error_code": error_code,
+            "error_message": error_message,
+        }
+        self._enqueue(
+            "/api/ros/navigation/command/"
+            f"{command_id}/status",
+            payload,
+        )
+        self._navigation_state = state
+        self._navigation_goal_handle = None
+        self._navigation_command = None
+        self._last_path_signature = None
+
+    @staticmethod
+    def _finite_or_none(value):
+        value = float(value)
+        return value if math.isfinite(value) else None
 
     def _map_result(self, success):
         if success:
@@ -252,6 +556,17 @@ class WebBridge(Node):
             success = self._post_json(endpoint, payload)
             if callback is not None:
                 callback(success)
+
+    def _get_json(self, endpoint):
+        try:
+            with urlopen(
+                self.backend_url + endpoint,
+                timeout=0.2,
+            ) as response:
+                raw = response.read()
+                return json.loads(raw) if raw else None
+        except (HTTPError, OSError, ValueError):
+            return None
 
     def _post_json(self, endpoint, payload):
         request = Request(

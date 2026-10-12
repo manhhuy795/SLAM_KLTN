@@ -14,7 +14,9 @@ def launch_bridge(context):
         "config",
         "bridge.yaml",
     )
-    parameters = [config_file]
+    parameters = [config_file, {
+        "use_sim_time": LaunchConfiguration("use_sim_time").perform(context) == "true",
+    }]
     backend_url = LaunchConfiguration("backend_url").perform(context)
 
     if backend_url:
@@ -40,5 +42,11 @@ def generate_launch_description():
 
     return LaunchDescription([
         backend_url,
+        DeclareLaunchArgument(
+            "use_sim_time",
+            default_value="true",
+            choices=["true", "false"],
+            description="Use Gazebo /clock for goal stamps and TF",
+        ),
         OpaqueFunction(function=launch_bridge),
     ])

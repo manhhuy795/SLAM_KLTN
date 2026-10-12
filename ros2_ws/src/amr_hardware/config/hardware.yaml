@@ -1,0 +1,28 @@
+amr_hardware:
+  ros__parameters:
+    # Prototype values copied from amr_sim; calibrate on the physical robot.
+    wheel_radius: 0.0325
+    wheel_separation: 0.25
+    # UNMEASURED test placeholder, NOT the GA25 encoder specification.
+    # Count actual decoded edges per motor-shaft revolution; multiply by gear_ratio.
+    # If measured per wheel revolution, put that value here and use gear_ratio=1.
+    encoder_ticks_per_revolution: 600.0
+    gear_ratio: 1.0
+    encoder_counter_bits: 32
+    max_encoder_ticks_per_second: 20000.0
+
+    max_linear_velocity: 0.22
+    max_angular_velocity: 1.0
+    max_wheel_velocity: 0.35  # Must match or be lower than the firmware limit.
+    cmd_vel_timeout: 0.5
+    encoder_timeout: 0.5
+
+    serial_port: /dev/ttyACM0
+    baudrate: 115200
+    reconnect_interval: 1.0
+    max_malformed_packets: 5
+
+    cmd_vel_topic: /cmd_vel
+    odom_topic: /odom
+    odom_frame: odom
+    base_frame: base_link

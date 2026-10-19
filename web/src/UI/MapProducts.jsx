@@ -24,6 +24,9 @@ import WarehouseMap from './WarehouseMap';
 
 export default function MapProducts() {
   const [tab, setTab] = useState('map');
+  function changeTab(next) {
+    if (window.dispatchEvent(new Event('planning:before-leave', { cancelable: true }))) setTab(next);
+  }
 
   const [locations, setLocations] = useState([]);
   const [products, setProducts] = useState([]);
@@ -114,21 +117,21 @@ export default function MapProducts() {
       >
         <PageTab
           active={tab === 'map'}
-          onClick={() => setTab('map')}
+          onClick={() => changeTab('map')}
         >
           Bản đồ kho
         </PageTab>
 
         <PageTab
           active={tab === 'locations'}
-          onClick={() => setTab('locations')}
+          onClick={() => changeTab('locations')}
         >
           Vị trí
         </PageTab>
 
         <PageTab
           active={tab === 'products'}
-          onClick={() => setTab('products')}
+          onClick={() => changeTab('products')}
         >
           Sản phẩm
         </PageTab>

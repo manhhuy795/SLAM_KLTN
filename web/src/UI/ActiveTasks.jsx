@@ -5,6 +5,8 @@ import {
   pauseTask,
   resumeTask,
   cancelTask,
+  createTaskProof,
+  startTask,
 } from '../services/api';
 import {
   subscribeRealtime,
@@ -70,7 +72,7 @@ const TASK_STAGE_MAP = {
 };
 
 
-export default function ActiveTasks() {
+export default function ActiveTasks({ operatorId }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -162,6 +164,22 @@ export default function ActiveTasks() {
   }
 
 
+  async function handleStart(task) {
+    try {
+      setActionTaskId(task.id);
+      const updated = await startTask(task.id);
+      setTasks((current) => current.map((item) => (
+        item.id === updated.id ? updated : item
+      )));
+    } catch (err) {
+      console.error(err);
+      window.alert(`Không thể bắt đầu task: ${err.message}`);
+    } finally {
+      setActionTaskId(null);
+    }
+  }
+
+
   async function handleCancel(task) {
     const confirmed = window.confirm(
       `Bạn có chắc muốn yêu cầu hủy ${task.task_code}?`
@@ -189,6 +207,38 @@ export default function ActiveTasks() {
       window.alert(
         `Không thể yêu cầu hủy nhiệm vụ: ${err.message}`
       );
+    } finally {
+      setActionTaskId(null);
+    }
+  }
+
+
+  async function handleConfirm(task, proofType) {
+    if (operatorId === null) {
+      window.alert('Không có operator để xác nhận.');
+      return;
+    }
+
+    const imagePath = window.prompt(
+      `Nhập image_path cho ${proofType.toLowerCase()} proof:`,
+      `/proofs/${task.task_code}-${proofType.toLowerCase()}.jpg`
+    );
+    if (!imagePath?.trim()) {
+      return;
+    }
+
+    try {
+      setActionTaskId(task.id);
+      await createTaskProof(task.id, {
+        proof_type: proofType,
+        image_path: imagePath.trim(),
+        verification_status: 'MANUAL_CONFIRMED',
+        confirmed_by: operatorId,
+      });
+      await loadTasks();
+    } catch (err) {
+      console.error(err);
+      window.alert(`Không thể xác nhận task: ${err.message}`);
     } finally {
       setActionTaskId(null);
     }
@@ -356,23 +406,56 @@ export default function ActiveTasks() {
 
                     <td className="text-right">
                       <div className="task-actions">
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          disabled={
-                            isProcessing ||
-                            task.cancel_requested
-                          }
-                          onClick={() =>
-                            handlePauseResume(task)
-                          }
-                        >
-                          {isProcessing
-                            ? '...'
-                            : task.is_paused
-                              ? 'Tiếp tục'
-                              : 'Dừng'}
-                        </button>
+                        {task.status === 'WAITING' ? (
+                          <button
+                            className="primary-button"
+                            type="button"
+                            disabled={
+                              isProcessing ||
+                              task.robot_id === null
+                            }
+                            onClick={() => handleStart(task)}
+                          >
+                            {isProcessing ? '...' : 'START'}
+                          </button>
+                        ) : task.status === 'MOVING_TO_PICKUP' ||
+                            task.status === 'TRANSPORTING' ? (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={
+                              isProcessing ||
+                              task.cancel_requested
+                            }
+                            onClick={() =>
+                              handlePauseResume(task)
+                            }
+                          >
+                            {isProcessing
+                              ? '...'
+                              : task.is_paused
+                                ? 'Tiếp tục'
+                                : 'Dừng'}
+                          </button>
+                        ) : task.status === 'ARRIVED_AT_PICKUP' ? (
+                          <button
+                            className="primary-button"
+                            type="button"
+                            disabled={isProcessing || operatorId === null}
+                            onClick={() => handleConfirm(task, 'PICKUP')}
+                          >
+                            Xác nhận lấy hàng
+                          </button>
+                        ) : task.status === 'ARRIVED_AT_DELIVERY' ? (
+                          <button
+                            className="primary-button"
+                            type="button"
+                            disabled={isProcessing || operatorId === null}
+                            onClick={() => handleConfirm(task, 'DELIVERY')}
+                          >
+                            Xác nhận giao hàng
+                          </button>
+                        ) : null}
 
 
                         <button

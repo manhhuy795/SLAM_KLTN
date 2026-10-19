@@ -15,6 +15,11 @@ import {
   subscribeRealtimeStatus,
 } from '../services/realtime';
 import SlamMap from './SlamMap';
+import SavedMapControls from './SavedMapControls';
+import MapEditor from './MapEditor';
+import SavedMapNavigation from './SavedMapNavigation';
+import { mapView } from '../services/savedMap';
+import { getVisibleSlamStatus, receiveRosStatus } from '../services/rosStatus';
 
 
 const MAP_WIDTH_METERS = 12;
@@ -37,11 +42,16 @@ export default function WarehouseMap() {
   const [robots, setRobots] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [slamMap, setSlamMap] = useState(null);
+  const [mapMode, setMapMode] = useState('live');
+  const [savedMap, setSavedMap] = useState(null);
+  const [mapSession,setMapSession]=useState(null);
+  const [editingMap, setEditingMap] = useState(false);
+  const [mapSourceBusy, setMapSourceBusy] = useState(false);
   const [slamPose, setSlamPose] = useState(null);
   const [slamStatus, setSlamStatus] = useState(null);
   const [navigationStatus, setNavigationStatus] = useState(null);
   const [navigationPath, setNavigationPath] = useState(null);
-  const [statusNow, setStatusNow] = useState(() => Date.now());
+  const [statusNow, setStatusNow] = useState(() => performance.now());
 
   const [error, setError] = useState(null);
 
@@ -81,7 +91,7 @@ export default function WarehouseMap() {
         setTasks(taskData);
         setSlamMap(mapData);
         setSlamPose(poseData);
-        setSlamStatus(statusData);
+        setSlamStatus(receiveRosStatus(statusData));
         setNavigationStatus(navigationStatusData);
         setNavigationPath(navigationPathData);
         setError(null);
@@ -108,8 +118,8 @@ export default function WarehouseMap() {
 
   useEffect(() => {
     const interval = window.setInterval(
-      () => setStatusNow(Date.now()),
-      1000
+      () => setStatusNow(performance.now()),
+      250
     );
 
     return () => window.clearInterval(interval);
@@ -159,7 +169,7 @@ export default function WarehouseMap() {
       }
 
       if (message.type === 'SLAM_STATUS_UPDATED') {
-        setSlamStatus(message.data);
+        setSlamStatus(receiveRosStatus(message.data));
       }
       if (message.type === 'NAVIGATION_STATUS_UPDATED') {
         setNavigationStatus(message.data);
@@ -191,7 +201,7 @@ export default function WarehouseMap() {
           setTasks(taskData);
           setSlamMap(mapData);
           setSlamPose(poseData);
-          setSlamStatus(statusData);
+          setSlamStatus(receiveRosStatus(statusData));
           setNavigationStatus(navigationStatusData);
           setNavigationPath(navigationPathData);
         }).catch((err) => {
@@ -228,7 +238,13 @@ export default function WarehouseMap() {
     statusNow
   );
 
-  const mapTitle = slamMap
+  const view = mapView(mapMode, slamMap, savedMap, slamPose, navigationStatus?.goal, navigationPath);
+  const savedRosVisible = mapMode === 'saved' && savedMap?.id === mapSession?.map_id
+    && mapSession?.state !== 'OFFLINE' && savedMap?.map_hash === mapSession?.map_hash && mapSession?.map_verified
+    && mapSession?.localization_valid && Date.now()-mapSession.received_at<5000;
+  const savedGoal = savedRosVisible && navigationStatus?.goal?.map_context?.map_id===savedMap.id
+    ? navigationStatus.goal : null;
+  const mapTitle = mapMode === 'saved' ? 'SAVED MAP (SERVER)' : slamMap
     ? 'SLAM MAP (OCCUPANCYGRID)'
     : 'WAREHOUSE MAP (TESTBED)';
 
@@ -244,7 +260,7 @@ export default function WarehouseMap() {
           </h2>
 
           <span className="section-meta">
-            12.0m × 8.0m
+            {view.map ? `${(view.map.width * view.map.resolution).toFixed(2)}m × ${(view.map.height * view.map.resolution).toFixed(2)}m` : '12.0m × 8.0m'}
           </span>
         </div>
 
@@ -273,6 +289,8 @@ export default function WarehouseMap() {
       </div>
 
 
+      <SavedMapControls onBusyChange={setMapSourceBusy} locked={editingMap} mode={mapMode} onModeChange={setMapMode} map={savedMap} onMapChange={setSavedMap} />
+      {mapMode === "saved" && view.map && <SavedMapNavigation key={"nav-"+view.map.id} map={view.map} navigation={navigationStatus} onSession={setMapSession} disabled={editingMap || mapSourceBusy} />}
       <SlamStatusStrip status={visibleSlamStatus} />
 
 
@@ -283,13 +301,12 @@ export default function WarehouseMap() {
       )}
 
 
-      {slamMap ? (
-        <SlamMap
-          map={slamMap}
-          pose={slamPose}
-          goal={navigationStatus?.goal}
-          path={navigationPath}
-        />
+      {mapMode === 'saved' && !view.map ? (
+        <div className="map-canvas saved-map-empty">Chưa chọn bản đồ đã lưu. Hãy upload hoặc chọn bản đồ từ danh sách.</div>
+      ) : mapMode === 'saved' && view.map ? (
+        <MapEditor key={view.map.id} pose={savedRosVisible ? slamPose : null} goal={savedGoal} path={savedGoal ? navigationPath : null} sourceBusy={mapSourceBusy} map={view.map} onEditingChange={setEditingMap} />
+      ) : view.map ? (
+        <SlamMap {...view} />
       ) : (
       <div className="map-canvas">
         <svg
@@ -402,30 +419,6 @@ export default function WarehouseMap() {
 }
 
 
-function getVisibleSlamStatus(status, now) {
-  if (!status) {
-    return null;
-  }
-
-  const stale = status.timestamp !== null
-    && status.timestamp !== undefined
-    && now / 1000 - status.timestamp > 3;
-
-  if (!stale) {
-    return status;
-  }
-
-  return {
-    ...status,
-    bridge_online: false,
-    slam_online: false,
-    lidar_online: false,
-    localization_available: false,
-    tf_available: false,
-  };
-}
-
-
 function SlamStatusStrip({ status }) {
   const values = status || {
     bridge_online: false,
@@ -441,17 +434,33 @@ function SlamStatusStrip({ status }) {
       <RosStatus label="ROS BRIDGE" online={values.bridge_online} />
       <RosStatus label="SLAM" online={values.slam_online} />
       <RosStatus
-        label="MAP"
+        label="ROS MAP"
         online={values.map_status === 'RECEIVED'}
         value={values.map_status}
       />
       <RosStatus
         label="LIDAR"
         online={values.lidar_online}
-        value={values.lidar_online && values.scan_rate_hz
-          ? `${values.scan_rate_hz.toFixed(1)} Hz`
-          : undefined}
-      />
+        value={values.lidar_status || 'OFFLINE'}
+        stale={values.lidar_status === 'STALE'}
+      >
+        <span>SCAN {metric(values.scan_rate_hz, 1, 'Hz')}</span>
+        <span title="Scan age at bridge send time + elapsed time since receipt in this browser">
+          AGE {metric(values.last_scan_age_ms, 0, 'ms')}
+        </span>
+        <span>FRAME {values.scan_frame_id || '—'}</span>
+        <span title="Valid finite ranges within LaserScan range_min / range_max">
+          POINTS {values.lidar_online && values.scan_points_total != null
+            ? `${values.scan_points_valid ?? '—'}/${values.scan_points_total}` : '—'}
+        </span>
+        <span>NEAREST {metric(values.lidar_online ? values.nearest_obstacle_m : null, 2, 'm')}</span>
+        <span title="Gap between scans received by bridge; maximum since bridge start">
+          GAP / MAX {metric(values.scan_gap_ms, 0, 'ms')} / {metric(values.scan_max_gap_ms, 0, 'ms')}
+        </span>
+        <span title="Time since this browser received a status update; not end-to-end sensor latency">
+          UPDATE {metric(values.update_age_ms, 0, 'ms')}
+        </span>
+      </RosStatus>
       <RosStatus
         label="LOCALIZATION"
         online={values.localization_available}
@@ -462,12 +471,18 @@ function SlamStatusStrip({ status }) {
 }
 
 
-function RosStatus({ label, online, value }) {
+function metric(value, digits, unit) {
+  return Number.isFinite(value) ? `${value.toFixed(digits)} ${unit}` : '—';
+}
+
+
+function RosStatus({ label, online, value, stale = false, children }) {
   return (
-    <span className={`slam-status-item ${online ? 'slam-status-item--online' : ''}`}>
+    <span className={`slam-status-item ${online ? 'slam-status-item--online' : ''} ${stale ? 'slam-status-item--stale' : ''} ${children ? 'slam-status-item--lidar' : ''}`}>
       <span className="slam-status-dot" />
       <span>{label}</span>
       <strong>{value || (online ? 'ONLINE' : 'OFFLINE')}</strong>
+      {children}
     </span>
   );
 }

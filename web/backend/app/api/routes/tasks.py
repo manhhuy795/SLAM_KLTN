@@ -27,6 +27,7 @@ from app.services.robot_command import (
     add_robot_command,
     build_robot_command_response,
 )
+from app.services.task_executor import TaskExecutorError, task_executor
 
 
 router = APIRouter(
@@ -145,6 +146,24 @@ def build_proof_response(proof: TaskProof):
         "captured_at": proof.captured_at,
         "verified_at": proof.verified_at,
     }
+
+
+def publish_executor_updates(background_tasks, navigation_status, events):
+    for event in events:
+        queue_event(background_tasks, event)
+    if navigation_status is None:
+        return
+    queue_broadcast(
+        background_tasks,
+        "NAVIGATION_STATUS_UPDATED",
+        navigation_status,
+    )
+    if navigation_status["state"] == "SENDING":
+        queue_broadcast(
+            background_tasks,
+            "NAVIGATION_PATH_UPDATED",
+            {"frame_id": "map", "poses": []},
+        )
 
 
 @router.get(
@@ -331,6 +350,31 @@ def create_task(
 
 
 @router.patch(
+    "/{task_id}/start",
+    response_model=TaskOut,
+)
+def start_task(
+    task_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    try:
+        navigation_status, events = task_executor.start_pickup(db, task)
+    except TaskExecutorError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+    publish_executor_updates(background_tasks, navigation_status, events)
+    row = db.execute(task_query().where(Task.id == task.id)).first()
+    response = build_task_response(row)
+    queue_broadcast(background_tasks, "TASK_UPDATED", response)
+    return response
+
+
+@router.patch(
     "/{task_id}/pause",
     response_model=TaskOut,
 )
@@ -363,6 +407,11 @@ def pause_task(
             detail="Task has no assigned robot",
         )
 
+    try:
+        navigation_status, executor_events = task_executor.pause(db, task)
+    except TaskExecutorError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
     command = add_robot_command(
         db=db,
         robot_id=task.robot_id,
@@ -382,6 +431,11 @@ def pause_task(
     db.commit()
     db.refresh(event)
     db.refresh(command)
+    publish_executor_updates(
+        background_tasks,
+        navigation_status,
+        executor_events,
+    )
     queue_event(background_tasks, event)
     queue_broadcast(
         background_tasks,
@@ -436,6 +490,11 @@ def resume_task(
             detail="Task has no assigned robot",
         )
 
+    try:
+        navigation_status, executor_events = task_executor.resume(db, task)
+    except TaskExecutorError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
     command = add_robot_command(
         db=db,
         robot_id=task.robot_id,
@@ -455,6 +514,11 @@ def resume_task(
     db.commit()
     db.refresh(event)
     db.refresh(command)
+    publish_executor_updates(
+        background_tasks,
+        navigation_status,
+        executor_events,
+    )
     queue_event(background_tasks, event)
     queue_broadcast(
         background_tasks,
@@ -509,8 +573,11 @@ def request_cancel_task(
             detail="Task has no assigned robot",
         )
 
-    task.cancel_requested = True
-    task.updated_at = datetime.utcnow()
+    try:
+        navigation_status, executor_events = task_executor.cancel(db, task)
+    except TaskExecutorError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
     command = add_robot_command(
         db=db,
         robot_id=task.robot_id,
@@ -530,6 +597,11 @@ def request_cancel_task(
     db.commit()
     db.refresh(event)
     db.refresh(command)
+    publish_executor_updates(
+        background_tasks,
+        navigation_status,
+        executor_events,
+    )
     queue_event(background_tasks, event)
     queue_broadcast(
         background_tasks,
@@ -727,6 +799,16 @@ def create_task_proof(
         "AUTO_VERIFIED",
         "MANUAL_CONFIRMED",
     }
+    expected_status = {
+        "PICKUP": "ARRIVED_AT_PICKUP",
+        "DELIVERY": "ARRIVED_AT_DELIVERY",
+    }[data.proof_type]
+    if is_verified and task.status != expected_status:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task must be {expected_status} to confirm {data.proof_type.lower()}",
+        )
+
     captured_at = datetime.utcnow()
 
     proof = TaskProof(
@@ -765,12 +847,10 @@ def create_task_proof(
         "PICKUP": "PICKUP_CONFIRMED",
         "DELIVERY": "DELIVERY_CONFIRMED",
     }[proof.proof_type]
-    expected_status = {
-        "PICKUP": "ARRIVED_AT_PICKUP",
-        "DELIVERY": "ARRIVED_AT_DELIVERY",
-    }[proof.proof_type]
-
-    if is_verified and task.status == expected_status:
+    confirmed_response = None
+    navigation_status = None
+    executor_events = []
+    if is_verified:
         old_status = task.status
         task.status = confirmation_status
         task.progress = PROGRESS_BY_STATUS[confirmation_status]
@@ -813,12 +893,41 @@ def create_task_proof(
             )
         )
 
+        row = db.execute(task_query().where(Task.id == task.id)).first()
+        confirmed_response = build_task_response(row)
+
+        try:
+            if proof.proof_type == "PICKUP":
+                navigation_status, executor_events = task_executor.start_delivery(
+                    db, task,
+                )
+            else:
+                navigation_status, executor_events = task_executor.complete_delivery(
+                    db, task,
+                )
+        except TaskExecutorError as error:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     db.commit()
     db.refresh(proof)
 
     for event in events:
         db.refresh(event)
         queue_event(background_tasks, event)
+
+    publish_executor_updates(
+        background_tasks,
+        navigation_status,
+        executor_events,
+    )
+
+    if confirmed_response is not None:
+        queue_broadcast(
+            background_tasks,
+            "TASK_UPDATED",
+            confirmed_response,
+        )
 
     row = db.execute(
         task_query().where(Task.id == task.id)

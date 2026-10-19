@@ -22,7 +22,8 @@
     <plugin
       filename="gz-sim-sensors-system"
       name="gz::sim::systems::Sensors">
-      <render_engine>ogre</render_engine>
+      <!-- GpuLidarSensor requires OGRE2; OGRE returns range_min for every ray. -->
+      <render_engine>ogre2</render_engine>
     </plugin>
     <!-- Physics -->
     <physics name="physics" type="ignored">

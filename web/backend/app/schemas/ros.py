@@ -1,4 +1,5 @@
 from math import isfinite
+from uuid import UUID
 from time import time
 from typing import Literal
 
@@ -50,15 +51,50 @@ class RosStatusPayload(BaseModel):
     lidar_online: bool
     localization_available: bool
     tf_available: bool
-    scan_rate_hz: float | None = Field(default=None, ge=0)
-    last_scan_age_ms: float | None = Field(default=None, ge=0)
+    scan_rate_hz: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    last_scan_age_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    lidar_status: Literal["ONLINE", "STALE", "OFFLINE"] | None = None
+    scan_frame_id: str | None = None
+    scan_points_valid: int | None = Field(default=None, ge=0)
+    scan_points_total: int | None = Field(default=None, ge=0)
+    nearest_obstacle_m: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    scan_gap_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    scan_max_gap_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    bridge_queue_age_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    scan_stale_sec: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    scan_offline_sec: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     timestamp: float = Field(default_factory=time)
+
+    @model_validator(mode="after")
+    def validate_scan_diagnostics(self):
+        if (self.scan_points_valid is not None and self.scan_points_total is not None
+                and self.scan_points_valid > self.scan_points_total):
+            raise ValueError("Valid scan points cannot exceed total points")
+        if (self.scan_stale_sec is None) != (self.scan_offline_sec is None):
+            raise ValueError("Provide both scan freshness thresholds")
+        if (self.scan_stale_sec is not None
+                and self.scan_stale_sec >= self.scan_offline_sec):
+            raise ValueError("Require scan_stale_sec < scan_offline_sec")
+        return self
 
 
 class NavigationGoal(BaseModel):
     x: float
     y: float
     yaw: float = 0.0
+    location_id: int | None = Field(default=None, gt=0)
+    map_id: UUID | None = None
+    planning_point_id: UUID | None = None
+    planning_revision: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        fields = (self.map_id, self.planning_point_id, self.planning_revision)
+        if any(v is not None for v in fields) and not all(v is not None for v in fields):
+            raise ValueError("Provide map_id, planning_point_id and planning_revision together")
+        if self.map_id is not None and self.location_id is not None:
+            raise ValueError("Choose one goal source")
+        return self
 
     @field_validator("x", "y", "yaw")
     @classmethod
@@ -98,6 +134,7 @@ class NavigationStatusUpdate(BaseModel):
     number_of_recoveries: int = Field(default=0, ge=0)
     error_code: int = Field(default=0, ge=0)
     error_message: str = ""
+    cancel_requested: bool | None = None
 
     @field_validator("distance_remaining")
     @classmethod

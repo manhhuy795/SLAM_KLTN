@@ -4,7 +4,6 @@ import math
 import queue
 import threading
 import time
-from collections import deque
 from math import atan2
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -15,12 +14,16 @@ from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.action import ActionClient
+from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import (
+    DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data,
+)
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
 
+from .scan_diagnostics import ScanDiagnostics, scan_status
 from .time_utils import ros_time_to_seconds, transform_timestamp
 
 
@@ -35,6 +38,7 @@ class WebBridge(Node):
     def __init__(self):
         super().__init__("web_bridge")
 
+        self.declare_parameter("managed_maps", False)
         self.declare_parameter("backend_url", "http://127.0.0.1:8000")
         self.declare_parameter("robot_id", 1)
         self.declare_parameter("map_topic", "/map")
@@ -44,8 +48,9 @@ class WebBridge(Node):
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("robot_base_frame", "base_link")
         self.declare_parameter("pose_publish_period_sec", 0.2)
-        self.declare_parameter("heartbeat_period_sec", 1.0)
-        self.declare_parameter("scan_stale_sec", 1.0)
+        self.declare_parameter("heartbeat_period_sec", 0.2)
+        self.declare_parameter("scan_stale_sec", 0.5)
+        self.declare_parameter("scan_offline_sec", 3.0)
         self.declare_parameter("map_stale_sec", 10.0)
         self.declare_parameter("navigation_poll_period_sec", 0.2)
 
@@ -81,7 +86,7 @@ class WebBridge(Node):
             self.get_parameter("navigation_poll_period_sec").value
         )
 
-        self.tf_buffer = Buffer()
+        self.tf_buffer = Buffer(node=self)
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         map_qos = QoSProfile(
@@ -99,7 +104,7 @@ class WebBridge(Node):
             LaserScan,
             self.scan_topic,
             self._scan_callback,
-            10,
+            qos_profile_sensor_data,
         )
         self.path_sub = self.create_subscription(
             Path,
@@ -115,6 +120,8 @@ class WebBridge(Node):
         )
         self._navigation_command = None
         self._navigation_goal_handle = None
+        self._cancel_requested = False
+        self._cancel_in_flight = False
         self._navigation_state = "IDLE"
         self._navigation_feedback = {}
         self._last_path_signature = None
@@ -126,8 +133,10 @@ class WebBridge(Node):
         self._sent_map_hash = None
         self._queued_map_hash = None
         self._last_map_received = None
-        self._last_scan_received = None
-        self._scan_times = deque(maxlen=20)
+        self._scan = ScanDiagnostics(
+            self.scan_stale_sec,
+            float(self.get_parameter("scan_offline_sec").value),
+        )
         self._last_pose = None
         self._next_pose_publish = 0.0
         self._next_heartbeat = 0.0
@@ -141,7 +150,15 @@ class WebBridge(Node):
             daemon=True,
         )
         self._sender.start()
-        self._timer = self.create_timer(0.1, self._publish_updates)
+        # HTTP polling / heartbeats must continue even when Gazebo is paused.
+        self._timer = self.create_timer(
+            0.1, self._publish_updates, clock=Clock(clock_type=ClockType.STEADY_TIME),
+        )
+
+        self.managed_maps = None
+        if self.get_parameter("managed_maps").value:
+            from web_bridge.managed_maps import ManagedMaps
+            self.managed_maps = ManagedMaps(self)
 
     def _map_callback(self, message):
         origin = message.info.origin
@@ -182,10 +199,8 @@ class WebBridge(Node):
         self._latest_map_hash = digest
         self._last_map_received = time.monotonic()
 
-    def _scan_callback(self, _message):
-        now = time.monotonic()
-        self._last_scan_received = now
-        self._scan_times.append(now)
+    def _scan_callback(self, message):
+        self._scan.receive(message, time.monotonic())
 
     def _path_callback(self, message):
         if self._navigation_command is None:
@@ -230,12 +245,6 @@ class WebBridge(Node):
             "yaw": quaternion_to_yaw(transform.transform.rotation),
         }
 
-    def _scan_rate(self):
-        if len(self._scan_times) < 2:
-            return None
-        elapsed = self._scan_times[-1] - self._scan_times[0]
-        return (len(self._scan_times) - 1) / elapsed if elapsed > 0 else None
-
     def _publish_updates(self):
         now = time.monotonic()
 
@@ -260,17 +269,9 @@ class WebBridge(Node):
 
         if now >= self._next_heartbeat:
             self._next_heartbeat = now + self.heartbeat_period
-            scan_age = None
-            if self._last_scan_received is not None:
-                scan_age = (now - self._last_scan_received) * 1000.0
-
             map_received = self._last_map_received is not None
             map_fresh = map_received and (
                 now - self._last_map_received <= self.map_stale_sec
-            )
-            lidar_online = (
-                self._last_scan_received is not None
-                and now - self._last_scan_received <= self.scan_stale_sec
             )
             self._enqueue(
                 "/api/ros/state",
@@ -279,11 +280,9 @@ class WebBridge(Node):
                     "nav2_online": self.nav_client.server_is_ready(),
                     "slam_online": map_fresh,
                     "map_status": "RECEIVED" if map_received else "WAITING",
-                    "lidar_online": lidar_online,
+                    **self._scan.snapshot(now),
                     "localization_available": self._last_pose is not None,
                     "tf_available": self._last_pose is not None,
-                    "scan_rate_hz": self._scan_rate(),
-                    "last_scan_age_ms": scan_age,
                     "timestamp": time.time(),
                 },
             )
@@ -315,31 +314,48 @@ class WebBridge(Node):
             self._navigation_command = command
             self._navigation_state = "SENDING"
             self._navigation_feedback = {}
+            self._cancel_requested = False
+            self._cancel_in_flight = False
             self._last_path_signature = None
-            self._send_navigation_goal(command)
+            if getattr(self, "managed_maps", None):
+                self.managed_maps.dispatch(command)
+            else:
+                self._send_navigation_goal(command)
             return
 
         if command["command"] == "CANCEL":
-            if self._navigation_goal_handle is None:
-                self._post_navigation_terminal(
-                    command["id"],
-                    "FAILED",
-                    0,
-                    "No active Nav2 goal",
-                )
+            if (
+                self._navigation_command is None
+                or command["navigation_command_id"] != self._navigation_command["id"]
+            ):
                 return
-            cancel_future = (
-                self._navigation_goal_handle.cancel_goal_async()
-            )
-            active_command_id = self._navigation_command["id"]
+            # The send_goal response may still be pending. Cancel after acceptance.
+            self._cancel_requested = True
+            self._cancel_navigation_goal()
+
+    def _cancel_navigation_goal(self):
+        if self._navigation_goal_handle is None or self._cancel_in_flight:
+            return
+        command_id = self._navigation_command["id"]
+        self._cancel_in_flight = True
+        try:
+            cancel_future = self._navigation_goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(
                 lambda future: self._cancel_response_callback(
-                    future,
-                    active_command_id,
+                    future, command_id,
                 )
             )
+        except Exception as error:
+            self._cancel_in_flight = False
+            self._cancel_requested = False
+            self._navigation_feedback["error_message"] = str(error)
+            self._queue_navigation_status(force=True)
 
     def _send_navigation_goal(self, command):
+        managed = getattr(self, "managed_maps", None)
+        if managed and (not managed.reported.get("ready") or time.monotonic()-managed.report_time > 4):
+            self._post_navigation_terminal(command["id"], "REJECTED", 0, "Map/localization not verified")
+            return
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
         goal.pose.header.frame_id = self.map_frame
@@ -384,12 +400,17 @@ class WebBridge(Node):
         self._navigation_state = "NAVIGATING"
         self._queue_navigation_status(force=True)
         result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self._result_callback)
+        result_future.add_done_callback(
+            lambda result: self._result_callback(result, command_id)
+        )
+        if self._cancel_requested:
+            self._cancel_navigation_goal()
 
     def _feedback_callback(self, feedback_message):
         feedback = feedback_message.feedback
         current = feedback.current_pose.pose
         self._navigation_feedback = {
+            "error_message": self._navigation_feedback.get("error_message", ""),
             "distance_remaining": self._finite_or_none(
                 feedback.distance_remaining
             ),
@@ -409,28 +430,28 @@ class WebBridge(Node):
         }
 
     def _cancel_response_callback(self, future, command_id):
+        if (
+            self._navigation_command is None
+            or self._navigation_command["id"] != command_id
+        ):
+            return
+        self._cancel_in_flight = False
         try:
             response = future.result()
-            if not response.goals_canceling:
-                self._post_navigation_terminal(
-                    command_id,
-                    "FAILED",
-                    0,
-                    "Nav2 did not accept cancel",
-                )
+            if response.goals_canceling:
+                # Only the action result may declare the goal CANCELLED.
+                return
+            message = "Nav2 did not accept cancel; goal is still tracked"
         except Exception as error:
-            self._post_navigation_terminal(
-                command_id,
-                "FAILED",
-                0,
-                str(error),
-            )
+            message = str(error)
+        self._cancel_requested = False
+        self._navigation_feedback["error_message"] = message
+        self._queue_navigation_status(force=True)
 
-    def _result_callback(self, future):
+    def _result_callback(self, future, command_id):
         command = self._navigation_command
-        if command is None:
+        if command is None or command["id"] != command_id:
             return
-        command_id = command["id"]
         try:
             result_wrapper = future.result()
             result = result_wrapper.result
@@ -481,7 +502,8 @@ class WebBridge(Node):
                 0,
             ),
             "error_code": 0,
-            "error_message": "",
+            "error_message": self._navigation_feedback.get("error_message", ""),
+            "cancel_requested": self._cancel_requested,
         }
         self._enqueue(
             "/api/ros/navigation/command/"
@@ -520,6 +542,8 @@ class WebBridge(Node):
         )
         self._navigation_state = state
         self._navigation_goal_handle = None
+        self._cancel_requested = False
+        self._cancel_in_flight = False
         self._navigation_command = None
         self._last_path_signature = None
 
@@ -534,6 +558,8 @@ class WebBridge(Node):
         self._queued_map_hash = None
 
     def _enqueue(self, endpoint, payload, callback=None):
+        if endpoint == "/api/ros/state":
+            payload = {**payload, "_queued_at": time.monotonic()}
         try:
             self._outbox.put_nowait((endpoint, payload, callback))
         except queue.Full:
@@ -553,6 +579,21 @@ class WebBridge(Node):
             except queue.Empty:
                 continue
 
+            if endpoint == "/api/ros/state":
+                # A slow HTTP sender must not make queued scans look fresh.
+                delay = max(0.0, time.monotonic() - payload.pop("_queued_at"))
+                if delay > 3.0:
+                    continue
+                payload["bridge_queue_age_ms"] = delay * 1000
+                if payload["last_scan_age_ms"] is not None:
+                    payload["last_scan_age_ms"] += delay * 1000
+                payload["lidar_status"] = scan_status(
+                    payload["last_scan_age_ms"], payload["scan_stale_sec"],
+                    payload["scan_offline_sec"],
+                )
+                payload["lidar_online"] = payload["lidar_status"] == "ONLINE"
+                if not payload["lidar_online"]:
+                    payload["scan_rate_hz"] = None
             success = self._post_json(endpoint, payload)
             if callback is not None:
                 callback(success)
@@ -589,6 +630,8 @@ class WebBridge(Node):
             return False
 
     def destroy_node(self):
+        if self.managed_maps:
+            self.managed_maps.close()
         self._stop_sender.set()
         self._sender.join(timeout=1.5)
         super().destroy_node()

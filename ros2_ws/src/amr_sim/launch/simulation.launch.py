@@ -3,8 +3,14 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    SetEnvironmentVariable,
+    TimerAction,
+)
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -16,20 +22,19 @@ def generate_launch_description():
     vm_compat = DeclareLaunchArgument(
         'vm_compat',
         default_value='false',
-        description='Use headless OGRE2 rendering for VMs without a display'
+        description='Use software OpenGL and X11 for the OGRE2 lidar in VMware'
     )
 
-    headless_args = PythonExpression([
-        "'-s --headless-rendering' if '",
-        LaunchConfiguration('vm_compat'),
-        "' == 'true' else ''"
-    ])
-
-    render_engine = PythonExpression([
-        "'ogre2' if '",
-        LaunchConfiguration('vm_compat'),
-        "' == 'true' else 'ogre'"
-    ])
+    vmware_software_rendering = SetEnvironmentVariable(
+        'LIBGL_ALWAYS_SOFTWARE',
+        '1',
+        condition=IfCondition(LaunchConfiguration('vm_compat')),
+    )
+    vmware_x11 = SetEnvironmentVariable(
+        'QT_QPA_PLATFORM',
+        'xcb',
+        condition=IfCondition(LaunchConfiguration('vm_compat')),
+    )
 
     world_file = os.path.join(
         pkg_amr_sim,
@@ -61,10 +66,9 @@ def generate_launch_description():
         ),
         launch_arguments={
             'gz_args': [
-                '-r -v 3 ',
-                headless_args,
-                ' --render-engine ',
-                render_engine,
+                # Server-only OGRE2/EGL publishes intermittent all-inf scans
+                # on VMware SVGA3D. The X11-backed GUI renderer is reliable.
+                '-r -v 3 --render-engine ogre2',
                 f' {world_file}'
             ]
         }.items(),
@@ -124,6 +128,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         vm_compat,
+        vmware_software_rendering,
+        vmware_x11,
         gazebo,
         bridge,
         lidar_tf,

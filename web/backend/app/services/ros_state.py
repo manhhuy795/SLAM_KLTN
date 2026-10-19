@@ -14,6 +14,7 @@ class RosState:
             "slam_online": False,
             "map_status": "WAITING",
             "lidar_online": False,
+            "lidar_status": "OFFLINE",
             "localization_available": False,
             "tf_available": False,
             "scan_rate_hz": None,
@@ -40,12 +41,33 @@ class RosState:
                 > self.heartbeat_timeout_sec
             )
 
+            status["heartbeat_age_ms"] = (
+                None if heartbeat_missing else
+                max(0.0, current_time - self._last_heartbeat_monotonic) * 1000
+            )
+            status["heartbeat_timeout_sec"] = self.heartbeat_timeout_sec
+            if not heartbeat_missing and status.get("last_scan_age_ms") is not None:
+                status["last_scan_age_ms"] += status["heartbeat_age_ms"]
+            if status.get("scan_stale_sec") is not None:
+                age = status.get("last_scan_age_ms")
+                if age is None or age > status["scan_offline_sec"] * 1000:
+                    lidar_status = "OFFLINE"
+                elif age > status["scan_stale_sec"] * 1000:
+                    lidar_status = "STALE"
+                else:
+                    lidar_status = "ONLINE"
+                status["lidar_status"] = lidar_status
+                status["lidar_online"] = lidar_status == "ONLINE"
+                if not status["lidar_online"]:
+                    status["scan_rate_hz"] = None
+
             if heartbeat_missing or heartbeat_expired:
                 status.update({
                     "bridge_online": False,
                     "nav2_online": False,
                     "slam_online": False,
                     "lidar_online": False,
+                    "lidar_status": "OFFLINE",
                     "localization_available": False,
                     "tf_available": False,
                     "scan_rate_hz": None,

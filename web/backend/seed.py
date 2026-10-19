@@ -88,6 +88,14 @@ def seed_robots(db: Session):
 def seed_locations(db: Session):
     locations = [
         {
+            "code": "RACK-TEST",
+            "name": "Rack test Nav2",
+            "location_type": "RACK",
+            "x": 0.5,
+            "y": 0.0,
+            "yaw": 0.0,
+        },
+        {
             "code": "HOME-01",
             "name": "HOME",
             "location_type": "HOME",

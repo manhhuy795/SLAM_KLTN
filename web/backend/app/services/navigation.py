@@ -28,7 +28,14 @@ class NavigationState:
             "timestamp": None,
         }
 
-    def create_goal(self, x, y, yaw):
+    def create_goal(self, x, y, yaw, location=None, task=None, planning_point=None):
+        from app.services.map_session import map_session
+        with map_session.lock:
+            context = map_session.guard()
+            return self._create_goal(x, y, yaw, location, task, planning_point,
+                                     context if context.get("enabled") else None)
+
+    def _create_goal(self, x, y, yaw, location, task, planning_point, context):
         with self._lock:
             if self._status["state"] in {"SENDING", "NAVIGATING"}:
                 raise ValueError("Navigation is already active")
@@ -36,6 +43,14 @@ class NavigationState:
             command_id = self._next_command_id
             self._next_command_id += 1
             goal = {"frame_id": "map", "x": x, "y": y, "yaw": yaw}
+            if context:
+                goal["map_context"] = {k: context.get(k) for k in ("session_id", "map_id", "map_hash")}
+            if planning_point:
+                goal["planning_point"] = deepcopy(planning_point)
+            if location is not None:
+                goal["location"] = deepcopy(location)
+            if task is not None:
+                goal["task"] = deepcopy(task)
             command = {
                 "id": command_id,
                 "command": "NAVIGATE_TO_POSE",
@@ -64,6 +79,18 @@ class NavigationState:
         with self._lock:
             if self._status["state"] not in {"SENDING", "NAVIGATING"}:
                 raise ValueError("Navigation is not active")
+
+            if (
+                self._pending is not None
+                and self._pending["command"] == "NAVIGATE_TO_POSE"
+                and not self._pending.get("claimed")
+            ):
+                # No bridge has taken the goal: do not send it to Nav2 at all.
+                self._pending = None
+                self._status["state"] = "CANCELLED"
+                self._status["cancel_requested"] = False
+                self._status["timestamp"] = time()
+                return deepcopy(self._status)
 
             command_id = self._next_command_id
             self._next_command_id += 1
@@ -105,6 +132,7 @@ class NavigationState:
                 "number_of_recoveries",
                 "error_code",
                 "error_message",
+                "cancel_requested",
             ):
                 if key in data:
                     self._status[key] = data[key]
@@ -121,6 +149,8 @@ class NavigationState:
         with self._lock:
             if command_id != self._status["command_id"]:
                 raise KeyError("Navigation command is no longer active")
+            if self._status["state"] in TERMINAL_STATES:
+                raise KeyError("Navigation command has already finished")
             self._path = {
                 "frame_id": data["frame_id"],
                 "poses": data["poses"],

@@ -28,3 +28,6 @@ web/backend/data/*.db
 .env.*
 .venv/
 venv/
+
+# Imported map runtime storage
+web/backend/data/maps/

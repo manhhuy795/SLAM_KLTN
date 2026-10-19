@@ -1,0 +1,8 @@
+# SYNTHETIC TEST MAP - NOT a LiDAR measurement
+image: import_demo.pgm
+resolution: 0.1
+origin: [-1.2, -0.8, 0.35]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+mode: trinary

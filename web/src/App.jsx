@@ -170,6 +170,7 @@ export default function App() {
 
 
   const handleNavigate = (page) => {
+    if (!window.dispatchEvent(new Event("planning:before-leave", { cancelable: true }))) return;
     setActivePage(page);
     setSidebarOpen(false);
   };
@@ -223,7 +224,7 @@ export default function App() {
             <section className="dashboard-main-column">
               <RobotStatus />
 
-              <ActiveTasks />
+              <ActiveTasks operatorId={operator?.id ?? null} />
 
               <WarehouseMap />
             </section>

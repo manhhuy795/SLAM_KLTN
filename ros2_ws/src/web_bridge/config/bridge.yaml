@@ -10,6 +10,7 @@ web_bridge:
     map_frame: map
     robot_base_frame: base_link
     pose_publish_period_sec: 0.2
-    heartbeat_period_sec: 1.0
-    scan_stale_sec: 1.0
+    heartbeat_period_sec: 0.2
+    scan_stale_sec: 0.5
+    scan_offline_sec: 3.0
     map_stale_sec: 10.0

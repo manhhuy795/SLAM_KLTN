@@ -16,7 +16,7 @@ function occupancyColor(value) {
 }
 
 
-export default function SlamMap({ map, pose, goal, path }) {
+export default function SlamMap({ map, pose, goal, path, overlay }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -89,6 +89,13 @@ export default function SlamMap({ map, pose, goal, path }) {
       context.arc(marker.x, marker.y, 4, 0, Math.PI * 2);
       context.fill();
       context.stroke();
+
+      const locationLabel = !overlay && (goal.planning_point?.name || goal.location?.code || goal.location?.name);
+      if (locationLabel) {
+        context.font = `${Math.max(6, Math.min(width, height) / 24)}px monospace`;
+        context.textBaseline = "bottom";
+        context.fillText(locationLabel, marker.x + 6, marker.y - 5);
+      }
     }
 
     if (pose && pose.frame_id === map.frame_id) {
@@ -126,9 +133,12 @@ export default function SlamMap({ map, pose, goal, path }) {
         role="img"
         aria-label="SLAM occupancy grid and robot pose"
       />
-      <div className="slam-map-meta">
-        {map.width} x {map.height} cells � {map.resolution.toFixed(3)} m/cell � {map.frame_id}
-      </div>
+      {overlay}
+      {!overlay && <div className="slam-map-meta">
+        {map.name && <span>{map.name} · </span>}
+        {map.width} x {map.height} cells · {map.resolution.toFixed(3)} m/cell · {map.frame_id}
+        {map.origin && <span> · origin [{map.origin.x}, {map.origin.y}, {map.origin.yaw}]</span>}
+      </div>}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  isWorldPointInMap,
   mapCellToWorld,
   worldToCanvas,
   worldToMapCell,
@@ -22,5 +23,19 @@ assert.deepEqual(world, { x: -1.75, y: -0.75 });
 
 const pixel = worldToCanvas(map, -1.75, -0.75, 1000, 800);
 assert.deepEqual(pixel, { x: 50, y: 750 });
+
+assert.equal(isWorldPointInMap(map, -1.75, -0.75), true);
+assert.equal(isWorldPointInMap(map, 2.99, 2.99), true);
+assert.equal(isWorldPointInMap(map, 3, 0), false);
+assert.equal(isWorldPointInMap(map, -2.01, 0), false);
+
+const rotatedMap = {
+  width: 2,
+  height: 1,
+  resolution: 1,
+  origin: { x: 5, y: 5, yaw: Math.PI / 2 },
+};
+assert.equal(isWorldPointInMap(rotatedMap, 4.5, 5.5), true);
+assert.equal(isWorldPointInMap(rotatedMap, 5.5, 5.5), false);
 
 console.log("SLAM map coordinate helpers: OK");

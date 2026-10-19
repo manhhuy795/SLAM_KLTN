@@ -40,3 +40,19 @@ export function worldToCanvas(map, x, y, width, height) {
     y: height - (cell.row / map.height) * height,
   };
 }
+
+export function isWorldPointInMap(map, x, y) {
+  if (
+    !map
+    || !Number.isFinite(Number(x))
+    || !Number.isFinite(Number(y))
+  ) {
+    return false;
+  }
+
+  const cell = worldToMapCell(map, Number(x), Number(y));
+  return cell.column >= 0
+    && cell.row >= 0
+    && cell.column < map.width
+    && cell.row < map.height;
+}

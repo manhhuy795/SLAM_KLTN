@@ -27,6 +27,7 @@ import {
   getTasks,
   pauseTask,
   resumeTask,
+  startTask,
 } from '../services/api';
 import {
   subscribeRealtime,
@@ -311,6 +312,22 @@ export default function Tasks({ operatorId }) {
       window.alert(
         `Không thể cập nhật nhiệm vụ: ${err.message}`
       );
+    } finally {
+      setActionTaskId(null);
+    }
+  }
+
+
+  async function start(task) {
+    try {
+      setActionTaskId(task.id);
+      const updated = await startTask(task.id);
+      setTasks((current) => current.map((item) => (
+        item.id === updated.id ? updated : item
+      )));
+    } catch (err) {
+      console.error(err);
+      window.alert(`Không thể bắt đầu task: ${err.message}`);
     } finally {
       setActionTaskId(null);
     }
@@ -608,6 +625,9 @@ export default function Tasks({ operatorId }) {
             onTogglePause={() =>
               togglePause(selectedTask)
             }
+            onStart={() =>
+              start(selectedTask)
+            }
             onCancel={() =>
               requestCancel(selectedTask)
             }
@@ -728,6 +748,7 @@ function TaskDetail({
   task,
   operatorId,
   actionBusy,
+  onStart,
   onTogglePause,
   onCancel,
   onRetry,
@@ -769,9 +790,14 @@ function TaskDetail({
 
 
   const canPause =
-    !TERMINAL_STATUSES.has(task.status) &&
+    ['MOVING_TO_PICKUP', 'TRANSPORTING'].includes(task.status) &&
     task.robot_id !== null &&
-    task.status !== 'WAITING' &&
+    !task.cancel_requested;
+
+
+  const canStart =
+    task.status === 'WAITING' &&
+    task.robot_id !== null &&
     !task.cancel_requested;
 
 
@@ -954,8 +980,21 @@ function TaskDetail({
       </div>
 
 
-      {(canPause || canCancel) && (
+      {(canStart || canPause || canCancel) && (
         <div className="task-detail-actions">
+          {canStart && (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={onStart}
+            >
+              <CirclePlay size={15} />
+              START TASK
+            </button>
+          )}
+
+
           {canPause && (
             <button
               className="secondary-button"

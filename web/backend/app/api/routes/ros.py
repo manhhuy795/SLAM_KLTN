@@ -1,4 +1,9 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.db.deps import get_db
+from app.models.location import Location
+from app.models.task import Task
 from app.schemas.ros import (
     NavigationGoal,
     NavigationPathPayload,
@@ -8,8 +13,10 @@ from app.schemas.ros import (
     RosStatusPayload,
 )
 from app.services.navigation import navigation_state
-from app.services.realtime import queue_broadcast
+from app.services.realtime import queue_broadcast, queue_event
 from app.services.ros_state import ros_state
+from app.services.task_executor import task_executor
+from app.api.routes.tasks import build_task_response, task_query
 
 
 router = APIRouter(
@@ -93,12 +100,49 @@ def update_ros_pose(
 def create_navigation_goal(
     data: NavigationGoal,
     background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
+    location_data = None
+    planning_point = None
+    if data.planning_point_id is not None:
+        from app.api.routes.maps import find_map
+        from app.services.planning import read_layer
+        from app.services.map_session import map_session
+        record = find_map(db, data.map_id)
+        session = map_session.status()
+        if not session.get("ready") or session.get("map_id") != record.id:
+            raise HTTPException(409, "Viewed map is not the verified Nav2 map")
+        layer = read_layer(db, record.id)
+        if layer["revision"] != data.planning_revision:
+            raise HTTPException(409, "Planning layer changed; reload the target")
+        point = next((p for p in layer["objects"] if p["id"] == str(data.planning_point_id)), None)
+        if not point or point["type"] not in {"HOME", "PICKUP", "DELIVERY", "CHARGING"}:
+            raise HTTPException(422, "Choose a valid navigation point")
+        planning_point = dict(id=point["id"], name=point["name"], map_id=record.id,
+                              revision=layer["revision"])
+    x, y, yaw = data.x, data.y, data.yaw
+    if data.location_id is not None:
+        location = db.get(Location, data.location_id)
+        if location is None:
+            raise HTTPException(status_code=404, detail="Location not found")
+        if not location.is_active:
+            raise HTTPException(status_code=409, detail="Location is inactive")
+        x, y, yaw = location.x, location.y, location.yaw
+        location_data = {
+            "id": location.id,
+            "code": location.code,
+            "name": location.name,
+        }
+
+    if planning_point:
+        x, y, yaw = point["x"], point["y"], point["yaw"]
     try:
         status = navigation_state.create_goal(
-            data.x,
-            data.y,
-            data.yaw,
+            x,
+            y,
+            yaw,
+            location_data,
+            planning_point=planning_point,
         )
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
@@ -145,6 +189,7 @@ def update_navigation_status(
     command_id: int,
     data: NavigationStatusUpdate,
     background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
     if data.command_id != command_id:
         raise HTTPException(status_code=400, detail="Command id mismatch")
@@ -158,6 +203,17 @@ def update_navigation_status(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
     broadcast_status(background_tasks, status)
+    task_result = task_executor.handle_navigation_status(db, status)
+    if task_result is not None:
+        task, events = task_result
+        for event in events:
+            queue_event(background_tasks, event)
+        row = db.execute(task_query().where(Task.id == task.id)).first()
+        queue_broadcast(
+            background_tasks,
+            "TASK_UPDATED",
+            build_task_response(row),
+        )
     if data.state in {"SUCCEEDED", "FAILED", "CANCELLED", "REJECTED"}:
         queue_broadcast(
             background_tasks,

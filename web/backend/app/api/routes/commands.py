@@ -250,7 +250,7 @@ def acknowledge_robot_command(
                 elif command.command == "RESUME":
                     task.is_paused = False
                 elif command.command == "CANCEL":
-                    task.cancel_requested = True
+                    task.cancel_requested = False
                     if task.status not in TERMINAL_STATUSES:
                         task.status = "CANCELLED"
 

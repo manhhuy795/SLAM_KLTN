@@ -4,6 +4,8 @@ from app.db.database import engine
 from app.models.operator import Operator
 from app.models.robot import Robot
 from app.models.location import Location
+from app.models.saved_map import SavedMap
+from app.models.planning_layer import PlanningLayer
 from app.models.product import Product
 from app.models.line_segment import LineSegment
 from app.models.robot_status import RobotStatus

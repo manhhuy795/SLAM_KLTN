@@ -10,7 +10,7 @@ const API_BASE_URL = (
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
     },
     ...options,
@@ -137,6 +137,12 @@ export function createTask(data) {
   return request("/tasks", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+}
+
+export function startTask(taskId) {
+  return request(`/tasks/${taskId}/start`, {
+    method: "PATCH",
   });
 }
 
@@ -267,3 +273,21 @@ export function cancelNavigation() {
     method: "POST",
   });
 }
+
+// Saved maps are server files, independent of the live ROS snapshot.
+export const getSavedMaps = () => request("/maps");
+export const getSelectedMap = () => request("/maps/selected");
+export const getSavedMap = (id) => request(`/maps/${id}`);
+export const selectSavedMap = (id) => request(`/maps/${id}/select`, { method: "POST" });
+export const deleteSavedMap = (id) => request(`/maps/${id}`, { method: "DELETE" });
+export const uploadSavedMap = (form) => request("/maps", { method: "POST", body: form });
+
+export const getPlanning = (id) => request(`/maps/${id}/planning`);
+export const savePlanning = (id, data) => request(`/maps/${id}/planning`, {
+  method: "PUT", body: JSON.stringify(data),
+});
+
+export const getMapSession = () => request("/ros/map-session");
+export const applyNavMap = (data) => request("/ros/map-session/apply", {
+  method: "POST", body: JSON.stringify(data),
+});

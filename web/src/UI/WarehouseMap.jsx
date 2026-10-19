@@ -42,8 +42,9 @@ export default function WarehouseMap() {
   const [robots, setRobots] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [slamMap, setSlamMap] = useState(null);
-  const [mapMode, setMapMode] = useState('live');
+  const [chosenMapMode, setMapMode] = useState(null);
   const [savedMap, setSavedMap] = useState(null);
+  const mapMode = chosenMapMode ?? (savedMap ? 'saved' : 'live');
   const [mapSession,setMapSession]=useState(null);
   const [editingMap, setEditingMap] = useState(false);
   const [mapSourceBusy, setMapSourceBusy] = useState(false);

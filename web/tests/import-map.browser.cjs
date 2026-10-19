@@ -75,6 +75,7 @@ async function until(check, description) {
   await page.goto(frontend,{waitUntil:"domcontentloaded"});
   await page.getByRole('button', {name:'Bản đồ & Sản phẩm', exact:true}).click();
   await page.getByRole('heading', {name:'Bản đồ kho và quản lý sản phẩm', exact:true}).waitFor();
+  assert.equal(await page.getByRole('button', {name:'Live Map (ROS 2)', exact:true}).getAttribute('aria-pressed'), 'true');
   await page.getByRole('button', { name: 'Saved Map (server)', exact: true }).click();
   await page.getByText('Chưa chọn bản đồ đã lưu.', { exact: false }).waitFor();
   assert.equal((await fetch(api + '/ros/state').then(r => r.json())).bridge_online, false);
@@ -116,8 +117,11 @@ async function until(check, description) {
   await start();
   assert.deepEqual(await fetch(api + '/maps/selected').then(r => r.json()), saved);
   await page.reload({waitUntil:"domcontentloaded"});
-  await page.getByRole('button', {name:'Saved Map (server)', exact:true}).click();
   await page.waitForFunction(() => document.querySelector('canvas')?.width === 32);
+  assert.equal(await page.getByRole('button', {name:'Saved Map (server)', exact:true}).getAttribute('aria-pressed'), 'true');
+  await page.getByRole('button', {name:'Bản đồ & Sản phẩm', exact:true}).click();
+  await page.waitForFunction(() => document.querySelector('canvas')?.width === 32);
+  assert.equal(await page.getByRole('button', {name:'Saved Map (server)', exact:true}).getAttribute('aria-pressed'), 'true');
   assert.equal((await fetch(api + '/ros/state').then(r => r.json())).bridge_online, false);
 
   fs.writeFileSync(path.join(temporary, 'sample.yaml'),

@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -41,6 +42,8 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://192.168.192.134:5173",
+        *[origin.strip() for origin in os.getenv("WRMS_CORS_ORIGINS", "").split(",")
+          if origin.strip()],
     ],
     allow_origin_regex=r"^https://[a-zA-Z0-9-]+\.trycloudflare\.com$",
     allow_credentials=True,

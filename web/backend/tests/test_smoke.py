@@ -25,6 +25,7 @@ class WrmsSmokeTest(unittest.TestCase):
         cls.env["WRMS_DATABASE_URL"] = f"sqlite:///{db_path.as_posix()}"
         cls.env["PYTHONPATH"] = str(BACKEND_DIR)
         cls.env["PYTHONIOENCODING"] = "utf-8"
+        cls.env["WRMS_CORS_ORIGINS"] = " http://192.168.56.10:5173, http://127.0.0.1:15173 "
 
         for script in ("init_db.py", "seed.py"):
             subprocess.run(
@@ -71,6 +72,21 @@ class WrmsSmokeTest(unittest.TestCase):
 
         cls.server.terminate()
         raise RuntimeError("Backend did not start")
+
+    def test_configured_browser_origins(self):
+        for origin in ["http://192.168.56.10:5173", "http://127.0.0.1:15173",
+                       "http://localhost:5173"]:
+            request = Request(self.base_url + "/health", method="OPTIONS",
+                              headers={"Origin": origin, "Access-Control-Request-Method": "GET"})
+            with urlopen(request, timeout=5) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Access-Control-Allow-Origin"], origin)
+        request = Request(self.base_url + "/health", method="OPTIONS",
+                          headers={"Origin": "https://not-allowed.example",
+                                   "Access-Control-Request-Method": "GET"})
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request, timeout=5)
+        self.assertEqual(error.exception.code, 400)
 
     @classmethod
     def tearDownClass(cls):

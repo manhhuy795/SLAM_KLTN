@@ -1,0 +1,111 @@
+{
+  "map_name": "San Demo 4 A0 - Final",
+  "map_size_m": {
+    "width": 2.38,
+    "height": 1.68
+  },
+  "line_width_mm": 20,
+  "notes": [
+    "Đây là bố cục sân demo đã chốt.",
+    "Cần import các điểm HOME, PICKUP, A1..D2 vào planning layer của map đã upload.",
+    "Nếu hệ thống hỗ trợ RACK object thì tạo 4 kệ KE_A..KE_D theo kích thước tham khảo.",
+    "Đường line trong ảnh chỉ là lớp line-following tham khảo, không phải vật cản OccupancyGrid.",
+    "Không thêm DELIVERY hoặc CHARGING."
+  ],
+  "points": [
+    {
+      "name": "HOME",
+      "x_m": 0.3,
+      "y_m": 0.84,
+      "type": "HOME"
+    },
+    {
+      "name": "PICKUP",
+      "x_m": 1.19,
+      "y_m": 0.84,
+      "type": "PICKUP"
+    },
+    {
+      "name": "A1",
+      "x_m": 0.75,
+      "y_m": 1.45,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "A2",
+      "x_m": 1.05,
+      "y_m": 1.45,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "B1",
+      "x_m": 1.33,
+      "y_m": 1.45,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "B2",
+      "x_m": 1.63,
+      "y_m": 1.45,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "C1",
+      "x_m": 0.75,
+      "y_m": 0.23,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "C2",
+      "x_m": 1.05,
+      "y_m": 0.23,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "D1",
+      "x_m": 1.33,
+      "y_m": 0.23,
+      "type": "RACK_STOP"
+    },
+    {
+      "name": "D2",
+      "x_m": 1.63,
+      "y_m": 0.23,
+      "type": "RACK_STOP"
+    }
+  ],
+  "racks": [
+    {
+      "name": "KE_A",
+      "center_x_m": 0.9,
+      "center_y_m": 1.53,
+      "width_m": 0.62,
+      "height_m": 0.18,
+      "yaw_rad": 0.0
+    },
+    {
+      "name": "KE_B",
+      "center_x_m": 1.48,
+      "center_y_m": 1.53,
+      "width_m": 0.62,
+      "height_m": 0.18,
+      "yaw_rad": 0.0
+    },
+    {
+      "name": "KE_C",
+      "center_x_m": 0.9,
+      "center_y_m": 0.15,
+      "width_m": 0.62,
+      "height_m": 0.18,
+      "yaw_rad": 0.0
+    },
+    {
+      "name": "KE_D",
+      "center_x_m": 1.48,
+      "center_y_m": 0.15,
+      "width_m": 0.62,
+      "height_m": 0.18,
+      "yaw_rad": 0.0
+    }
+  ]
+}

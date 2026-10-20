@@ -1,0 +1,38 @@
+{
+  "map_name": "SIMULATION ONLY - warehouse.sdf geometry",
+  "points": [
+    {
+      "name": "SIM Destination",
+      "type": "DELIVERY",
+      "x_m": 2.0,
+      "y_m": 0.0
+    }
+  ],
+  "racks": [],
+  "no_go": [
+    {
+      "name": "SIM Keepout",
+      "x": 1.0,
+      "y": 0.2,
+      "yaw": 0.0,
+      "vertices": [
+        {
+          "x": -0.2,
+          "y": -0.35
+        },
+        {
+          "x": 0.2,
+          "y": -0.35
+        },
+        {
+          "x": 0.2,
+          "y": 0.35
+        },
+        {
+          "x": -0.2,
+          "y": 0.35
+        }
+      ]
+    }
+  ]
+}

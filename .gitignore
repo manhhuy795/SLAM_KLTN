@@ -31,3 +31,6 @@ venv/
 
 # Imported map runtime storage
 web/backend/data/maps/
+
+# Private ESP32 AGV Wi-Fi and device key
+firmware/esp32_s3/agv_line_controller/agv_secrets.h

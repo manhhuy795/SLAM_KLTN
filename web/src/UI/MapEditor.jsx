@@ -12,7 +12,7 @@ const TOOLS = [['SELECT','Select / Move'],['PAN','Pan'],['RACK','Add Rack'],
   ['HOME','Add Home'],['PICKUP','Add Pickup'],['DELIVERY','Add Delivery'],
   ['CHARGING','Add Charging'],['NO_GO','Draw No-Go Zone']];
 
-export default function MapEditor({ map, onEditingChange, sourceBusy, pose, goal, path }) {
+export default function MapEditor({ map, onEditingChange, sourceBusy, pose, goal, path, agvPose }) {
   const [layer,setLayer]=useState(null), [objects,setObjects]=useState([]);
   const [editing,setEditing]=useState(false), [dirty,setDirty]=useState(false);
   const [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState('');
@@ -205,6 +205,15 @@ export default function MapEditor({ map, onEditingChange, sourceBusy, pose, goal
                 })}
               </g>;
             })}
+            {agvPose && <g aria-label="AGV LINE-01" pointerEvents="none">
+              <circle cx={canvasPoint(agvPose).x} cy={canvasPoint(agvPose).y} r={marker*1.35} fill="#17d6a4" stroke="#052e27" strokeWidth={marker*.3}/>
+              <line x1={canvasPoint(agvPose).x} y1={canvasPoint(agvPose).y}
+                x2={canvasPoint(agvPose).x+Math.cos(agvPose.yaw-(map.origin?.yaw||0))*marker*3}
+                y2={canvasPoint(agvPose).y-Math.sin(agvPose.yaw-(map.origin?.yaw||0))*marker*3}
+                stroke="#17d6a4" strokeWidth={marker*.6}/>
+              <text x={canvasPoint(agvPose).x+marker*2} y={canvasPoint(agvPose).y-marker*1.8}
+                fill="#17d6a4" fontSize={marker*1.25}>AGV LINE-01</text>
+            </g>}
             {drawing.length>0 && <polyline points={svgPoints(map,drawing)} fill="none" stroke="#ef4444" strokeWidth={marker*.2}/>}
             {drawing.map((p,i)=>{const q=canvasPoint(p);return <circle key={i} cx={q.x} cy={q.y} r={marker*.4} fill="#ef4444"/>;})}
           </svg>}/>

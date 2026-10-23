@@ -7,6 +7,7 @@ import {
 import Header from "./UI/Header";
 import Sidebar from "./UI/Sidebar";
 import RobotStatus from "./UI/RobotStatus";
+import AgvTelemetryPanel from "./UI/AgvTelemetryPanel";
 import ActiveTasks from "./UI/ActiveTasks";
 import WarehouseMap from "./UI/WarehouseMap";
 import DashboardSidePanel from "./UI/DashboardSidePanel";
@@ -223,6 +224,7 @@ export default function App() {
           <main className="dashboard-grid">
             <section className="dashboard-main-column">
               <RobotStatus />
+              <AgvTelemetryPanel />
 
               <ActiveTasks operatorId={operator?.id ?? null} />
 

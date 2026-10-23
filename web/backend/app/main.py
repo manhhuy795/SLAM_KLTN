@@ -5,6 +5,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.robots import router as robots_router
+from app.api.routes.agv import router as agv_router
 from app.api.routes.commands import router as commands_router
 from app.api.routes.locations import router as locations_router
 from app.api.routes.products import router as products_router
@@ -131,3 +132,5 @@ app.include_router(planning_router, prefix="/api")
 
 from app.api.routes.map_session import router as map_session_router
 app.include_router(map_session_router, prefix="/api")
+
+app.include_router(agv_router, prefix="/api")

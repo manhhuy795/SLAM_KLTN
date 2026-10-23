@@ -15,6 +15,8 @@ import {
   subscribeRealtimeStatus,
 } from '../services/realtime';
 import SlamMap from './SlamMap';
+import { getAgvState } from '../services/agv';
+import { agvToSharedMap } from '../services/agvAlignment';
 import SavedMapControls from './SavedMapControls';
 import MapEditor from './MapEditor';
 import SavedMapNavigation from './SavedMapNavigation';
@@ -39,6 +41,8 @@ const TERMINAL_TASK_STATUSES = new Set([
 
 export default function WarehouseMap() {
   const [locations, setLocations] = useState([]);
+  const [agvState,setAgvState] = useState(null);
+  const [agvAlignment,setAgvAlignment] = useState(null);
   const [robots, setRobots] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [slamMap, setSlamMap] = useState(null);
@@ -218,6 +222,19 @@ export default function WarehouseMap() {
   }, []);
 
 
+  useEffect(()=>{
+    let active=true;
+    const load=()=>getAgvState().then(v=>{if(active)setAgvState(v);}).catch(()=>{});
+    load();const timer=window.setInterval(load,1000);
+    return ()=>{active=false;window.clearInterval(timer);};
+  },[]);
+
+  useEffect(()=>{
+    if(!savedMap?.map_hash){setAgvAlignment(null);return;}
+    try {setAgvAlignment(JSON.parse(window.localStorage.getItem('wrms-agv-align-'+savedMap.map_hash)||'null'));}
+    catch {setAgvAlignment(null);}
+  },[savedMap?.map_hash]);
+
   const activeTasks = tasks.filter(
     (task) =>
       !TERMINAL_TASK_STATUSES.has(
@@ -240,6 +257,8 @@ export default function WarehouseMap() {
   );
 
   const view = mapView(mapMode, slamMap, savedMap, slamPose, navigationStatus?.goal, navigationPath);
+  const agvSharedPose = agvState?.connected && mapMode === 'saved' && savedMap
+    ? agvToSharedMap(savedMap,agvAlignment,agvState.telemetry) : null;
   const savedRosVisible = mapMode === 'saved' && savedMap?.id === mapSession?.map_id
     && mapSession?.state !== 'OFFLINE' && savedMap?.map_hash === mapSession?.map_hash && mapSession?.map_verified
     && mapSession?.localization_valid && Date.now()-mapSession.received_at<5000;
@@ -293,6 +312,25 @@ export default function WarehouseMap() {
       <SavedMapControls onBusyChange={setMapSourceBusy} locked={editingMap} mode={mapMode} onModeChange={setMapMode} map={savedMap} onMapChange={setSavedMap} />
       {mapMode === "saved" && view.map && <SavedMapNavigation key={"nav-"+view.map.id} map={view.map} navigation={navigationStatus} onSession={setMapSession} disabled={editingMap || mapSourceBusy} />}
       <SlamStatusStrip status={visibleSlamStatus} />
+      {mapMode==='saved' && savedMap && <div style={{padding:10,background:'#17212e',color:'#e8f0fa',borderRadius:8,marginBottom:10}}>
+        <strong>Hai robot · Một bản đồ WRMS</strong>
+        <p style={{fontSize:12,margin:'5px 0'}}>Căn chỉnh ba mốc AGV A, B, D bằng tọa độ mét của bản đồ đang chọn. Chỉ dùng sau khi đo thực tế; không tự kéo giãn 1.54 × 1.51 m.</p>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {['a','b','d'].map(anchor=><label key={anchor} style={{fontSize:12}}>Mốc {anchor.toUpperCase()}:
+            {['x','y'].map(axis=><input key={axis} aria-label={anchor.toUpperCase()+' '+axis} type="number" step="0.01" placeholder={axis}
+              value={agvAlignment?.[anchor]?.[axis] ?? ''}
+              onChange={event=>{
+                const number=event.target.value===''?null:Number(event.target.value);
+                const next={...(agvAlignment||{}),map_hash:savedMap.map_hash,map_id:savedMap.id,
+                  [anchor]:{...(agvAlignment?.[anchor]||{}),[axis]:number}};
+                setAgvAlignment(next);
+                window.localStorage.setItem('wrms-agv-align-'+savedMap.map_hash,JSON.stringify(next));
+              }} style={{width:75,marginLeft:4,color:'#101820'}}/>)}
+          </label>)}
+        </div>
+        <p style={{fontSize:12,marginTop:5}}>{agvSharedPose?'AGV đã căn chỉnh: hiển thị vị trí thật trên bản đồ chung':
+          'AGV chưa có phép căn chỉnh hợp lệ; không hiển thị vị trí sai lên bản đồ.'}</p>
+      </div>}
 
 
       {error && (
@@ -305,7 +343,7 @@ export default function WarehouseMap() {
       {mapMode === 'saved' && !view.map ? (
         <div className="map-canvas saved-map-empty">Chưa chọn bản đồ đã lưu. Hãy upload hoặc chọn bản đồ từ danh sách.</div>
       ) : mapMode === 'saved' && view.map ? (
-        <MapEditor key={view.map.id} pose={savedRosVisible ? slamPose : null} goal={savedGoal} path={savedGoal ? navigationPath : null} sourceBusy={mapSourceBusy} map={view.map} onEditingChange={setEditingMap} />
+        <MapEditor key={view.map.id} agvPose={agvSharedPose} pose={savedRosVisible ? slamPose : null} goal={savedGoal} path={savedGoal ? navigationPath : null} sourceBusy={mapSourceBusy} map={view.map} onEditingChange={setEditingMap} />
       ) : view.map ? (
         <SlamMap {...view} />
       ) : (

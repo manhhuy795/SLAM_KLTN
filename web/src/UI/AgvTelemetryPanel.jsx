@@ -34,21 +34,21 @@ export default function AgvTelemetryPanel() {
   const connected = !!state?.connected;
   const allowed = connected && state?.commands_enabled;
   const mask = data?.line_mask ?? 0;
-  return <section aria-label="AGV telemetry" style={{background:"#17212e",color:"#e9f2fc",padding:20,borderRadius:12,marginBottom:18}}>
+  return <section aria-label="AGV telemetry" style={{background:"var(--surface)",color:"var(--text-primary)",border:"1px solid var(--border)",padding:20,borderRadius:12,marginBottom:18}}>
     <h2 style={{fontSize:20,marginBottom:12}}>AGV LINE-01 · Giám sát phần cứng</h2>
     <p style={{marginBottom:12}}>{connected ? "🟢 Đang truyền telemetry" : "🔴 Offline / dữ liệu đã cũ"} · {state?.last_seen_age_ms == null ? "Chưa có dữ liệu" : `Cập nhật ${state.last_seen_age_ms} ms trước`}</p>
-    {error && <p role="alert" style={{color:"#ff9e9e"}}>{error}</p>}
+    {error && <p role="alert" style={{color:"var(--danger)"}}>{error}</p>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:18}}>
       <div>
-        <svg viewBox="0 0 440 380" role="img" aria-label="Bản đồ AGV A B C D độc lập với bản đồ SLAM" style={{width:"100%",background:"#0b1522",borderRadius:8}}>
-          <polyline points={STATIONS.map(p=>`${svgX(p.x)},${svgY(p.y)}`).join(" ") + " 50,40"} fill="none" stroke="#4da8ff" strokeWidth="4" />
-          {STATIONS.map(p=><g key={p.id}><circle cx={svgX(p.x)} cy={svgY(p.y)} r="7" fill="#f6ba48"/><text x={svgX(p.x)+10} y={svgY(p.y)-10} fill="white" fontSize="16">{p.id}</text></g>)}
-          {state?.trail?.length>1 && <polyline points={state.trail.map(p=>`${svgX(p[0])},${svgY(p[1])}`).join(" ")} fill="none" stroke="#4dedb8" strokeWidth="2" />}
+        <svg viewBox="0 0 440 380" role="img" aria-label="Bản đồ AGV A B C D độc lập với bản đồ SLAM" style={{width:"100%",background:"var(--surface-muted)",border:"1px solid var(--border)",borderRadius:8}}>
+          <polyline points={STATIONS.map(p=>`${svgX(p.x)},${svgY(p.y)}`).join(" ") + " 50,40"} fill="none" stroke="#2563eb" strokeWidth="4" />
+          {STATIONS.map(p=><g key={p.id}><circle cx={svgX(p.x)} cy={svgY(p.y)} r="7" fill="#f6ba48"/><text x={svgX(p.x)+10} y={svgY(p.y)-10} fill="#0f172a" fontSize="16">{p.id}</text></g>)}
+          {state?.trail?.length>1 && <polyline points={state.trail.map(p=>`${svgX(p[0])},${svgY(p[1])}`).join(" ")} fill="none" stroke="#059669" strokeWidth="3" />}
           {data && <g transform={`translate(${svgX(data.x)} ${svgY(data.y)}) rotate(${data.yaw})`}>
             <circle r="9" fill="#ff873a"/><path d="M0 0 L22 0" stroke="white" strokeWidth="3"/>
           </g>}
         </svg>
-        <p style={{fontSize:12,color:"#a8b9d0"}}>Hệ tọa độ sa bàn AGV 1.54 × 1.51 m · +Y xuống · Không thay thế pose Nav2.</p>
+        <p style={{fontSize:12,color:"var(--text-secondary)"}}>Hệ tọa độ sa bàn AGV 1.54 × 1.51 m · +Y xuống · Không thay thế pose Nav2.</p>
       </div>
       <div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -57,11 +57,11 @@ export default function AgvTelemetryPanel() {
             ["Tốc độ",data?.speed,"cm/s"],["Quãng đường",data?.dist,"m"],
             ["Line error",data?.line_err,""],["Encoder L",data?.ticks_l,""],["Encoder R",data?.ticks_r,""],
             ["PWM L",data?.pwm_l,""],["PWM R",data?.pwm_r,""],
-          ].map(([label,value,unit])=><div key={label} style={{background:"#233345",padding:10,borderRadius:6}}>
+          ].map(([label,value,unit])=><div key={label} style={{background:"var(--surface-muted)",border:"1px solid var(--border)",padding:10,borderRadius:6}}>
             <small>{label}</small><div style={{fontSize:17,fontWeight:700}}>{value ?? "—"} {value==null?"":unit}</div>
           </div>)}
         </div>
-        <p style={{marginTop:12}}>TCRT5000: {["L2","L1","C","R1","R2"].map((label,i)=><span key={label} style={{display:"inline-block",padding:"5px 8px",margin:2,borderRadius:5,background:mask&(1<<(4-i))?"#bb4169":"#34495c"}}>{label}</span>)}</p>
+        <p style={{marginTop:12}}>TCRT5000: {["L2","L1","C","R1","R2"].map((label,i)=><span key={label} style={{display:"inline-block",padding:"5px 8px",margin:2,borderRadius:5,background:mask&(1<<(4-i))?"#be123c":"var(--surface-muted)",color:mask&(1<<(4-i))?"#fff":"var(--text-primary)"}}>{label}</span>)}</p>
         <p>Trạng thái: <strong>{data?.state ?? "Chưa có"}</strong> · ACK: {state?.last_ack_id ?? 0}</p>
         <p>Lệnh: {state?.pending_command?.cmd ?? state?.last_command ?? "Không có"} ({state?.command_status ?? "NONE"})</p>
       </div>

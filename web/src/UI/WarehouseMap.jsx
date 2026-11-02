@@ -312,7 +312,7 @@ export default function WarehouseMap() {
       <SavedMapControls onBusyChange={setMapSourceBusy} locked={editingMap} mode={mapMode} onModeChange={setMapMode} map={savedMap} onMapChange={setSavedMap} />
       {mapMode === "saved" && view.map && <SavedMapNavigation key={"nav-"+view.map.id} map={view.map} navigation={navigationStatus} onSession={setMapSession} disabled={editingMap || mapSourceBusy} />}
       <SlamStatusStrip status={visibleSlamStatus} />
-      {mapMode==='saved' && savedMap && <div style={{padding:10,background:'#17212e',color:'#e8f0fa',borderRadius:8,marginBottom:10}}>
+      {mapMode==='saved' && savedMap && <div style={{padding:10,background:'var(--surface)',color:'var(--text-primary)',border:'1px solid var(--border)',borderRadius:8,marginBottom:10}}>
         <strong>Hai robot · Một bản đồ WRMS</strong>
         <p style={{fontSize:12,margin:'5px 0'}}>Căn chỉnh ba mốc AGV A, B, D bằng tọa độ mét của bản đồ đang chọn. Chỉ dùng sau khi đo thực tế; không tự kéo giãn 1.54 × 1.51 m.</p>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -325,7 +325,7 @@ export default function WarehouseMap() {
                   [anchor]:{...(agvAlignment?.[anchor]||{}),[axis]:number}};
                 setAgvAlignment(next);
                 window.localStorage.setItem('wrms-agv-align-'+savedMap.map_hash,JSON.stringify(next));
-              }} style={{width:75,marginLeft:4,color:'#101820'}}/>)}
+              }} style={{width:75,marginLeft:4}}/>)}
           </label>)}
         </div>
         <p style={{fontSize:12,marginTop:5}}>{agvSharedPose?'AGV đã căn chỉnh: hiển thị vị trí thật trên bản đồ chung':
@@ -347,7 +347,7 @@ export default function WarehouseMap() {
       ) : view.map ? (
         <SlamMap {...view} />
       ) : (
-      <div className="map-canvas">
+      <div className="map-canvas warehouse-map-schematic">
         <svg
           viewBox="0 0 640 340"
           role="img"

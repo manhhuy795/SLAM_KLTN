@@ -1,6 +1,6 @@
 // Apply measured AGV A,B,D anchors to the *same* map used by AMR.
 // Never scale local odometry or assume it already is ROS 'map' coordinates.
-import { isWorldPointInMap } from "./slamMap";
+import { isWorldPointInMap } from "./slamMap.js";
 
 export function agvToSharedMap(map, alignment, localPose) {
   if (!map || !alignment || !localPose) return null;

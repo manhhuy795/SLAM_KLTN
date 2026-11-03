@@ -37,6 +37,32 @@ class TaskCreate(BaseModel):
     retry_of_task_id: int | None = None
 
 
+class AgvPickupTaskCreate(BaseModel):
+    product_id: int | None = None
+    robot_id: int
+
+
+class AgvPolicyUpdate(BaseModel):
+    map_id: str
+    mapping: dict[str, str]
+    min_confidence: float
+    min_margin: float
+    expected_revision: int | None = None
+    operator_id: int
+
+
+class AgvVisionCaptureCreate(BaseModel):
+    capture_id: str
+    robot_id: int
+    image_ref: str
+
+
+class AgvVisionReview(BaseModel):
+    capture_id: str
+    operator_id: int
+    approve: bool
+
+
 class TaskStatusUpdate(BaseModel):
     status: TaskStatus
     fail_reason: str | None = None
@@ -64,9 +90,9 @@ class TaskOut(BaseModel):
     id: int
     task_code: str
 
-    product_id: int
-    product_code: str
-    product_name: str
+    product_id: int | None
+    product_code: str | None
+    product_name: str | None
 
     robot_id: int | None
     robot_code: str | None
@@ -75,9 +101,9 @@ class TaskOut(BaseModel):
     pickup_location_code: str
     pickup_location_name: str
 
-    dropoff_location_id: int
-    dropoff_location_code: str
-    dropoff_location_name: str
+    dropoff_location_id: int | None
+    dropoff_location_code: str | None
+    dropoff_location_name: str | None
 
     status: str
     progress: int

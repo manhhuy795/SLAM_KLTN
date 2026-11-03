@@ -52,12 +52,12 @@ class Task(Base):
         unique=True,
     )
 
-    product_id: Mapped[int] = mapped_column(
+    product_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             "products.id",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -79,12 +79,12 @@ class Task(Base):
         index=True,
     )
 
-    dropoff_location_id: Mapped[int] = mapped_column(
+    dropoff_location_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             "locations.id",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 

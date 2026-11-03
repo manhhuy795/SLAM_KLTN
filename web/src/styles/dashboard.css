@@ -144,6 +144,17 @@ button:disabled, input:disabled, select:disabled { opacity: .55; cursor: not-all
 .robot-card-footer strong { color: var(--text-primary); }
 .inline-divider { color: var(--border-strong); margin: 0 3px; }
 .robot-route { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: right; }
+.robot-card-footer .text-link { flex: 0 0 auto; font-family: var(--font-mono); }
+.agv-line-bit { display: inline-block; margin: 2px; padding: 4px 7px; border: 1px solid var(--border); background: var(--surface-muted); }
+.agv-line-bit[data-active="true"] { background: var(--red); color: white; }
+.agv-telemetry-json { max-height: 240px; overflow: auto; padding: 10px; border: 1px solid var(--border); background: var(--surface-muted); font-size: 12px; }
+.agv-test-schematic { display: block; width: min(100%, 440px); background: var(--surface-muted); border: 1px solid var(--border); }
+.agv-test-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.agv-test-actions button { padding: 6px 10px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text-primary); cursor: pointer; }
+.agv-test-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.agv-camera-preview { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); font-size: 12px; }
+.agv-camera-preview p { margin: 0; }
+.agv-camera-preview button, .agv-camera-preview select { width: fit-content; max-width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text-primary); }
 
 .section-header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--border); }
 .section-title-group { gap: 8px; min-width: 0; }

@@ -1004,6 +1004,32 @@ class WrmsSmokeTest(unittest.TestCase):
             "WAITING",
         )
 
+    def test_line_task_start_is_rejected_without_nav_command(self):
+        locations = self.request("/locations")[1]
+        rack = next(item for item in locations if item["location_type"] == "RACK")
+        delivery = next(item for item in locations if item["location_type"] == "DELIVERY")
+        line_robot = next(item for item in self.request("/robots")[1]
+                          if item["robot_type"] == "LINE")
+        code, product = self.request("/products", "POST", {
+            "product_code": "LINE-DISPATCH-GUARD",
+            "name": "LINE dispatch guard",
+            "default_rack_id": rack["id"],
+        })
+        self.assertEqual(code, 201)
+        code, task = self.request("/tasks", "POST", {
+            "product_id": product["id"],
+            "dropoff_location_id": delivery["id"],
+            "robot_id": line_robot["id"],
+        })
+        self.assertEqual(code, 201)
+        before = self.request("/ros/navigation/status")[1]
+
+        code, error = self.request(f"/tasks/{task['id']}/start", "PATCH")
+        self.assertEqual(code, 409)
+        self.assertEqual(error["detail"], "Task robot does not support AMR navigation")
+        self.assertEqual(self.request(f"/tasks/{task['id']}")[1]["status"], "WAITING")
+        self.assertEqual(self.request("/ros/navigation/status")[1], before)
+
     def assert_websocket_event(self, robot_id, robot_code):
         try:
             import websockets

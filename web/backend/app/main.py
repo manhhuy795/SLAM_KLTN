@@ -19,6 +19,9 @@ from app.api.routes.maps import router as maps_router
 from app.db.database import engine
 from app.models.saved_map import SavedMap
 from app.models.planning_layer import PlanningLayer
+from app.models.agv_mission import AgvMission, AgvMissionCommand
+from app.models.agv_cargo_evidence import AgvCargoEvidence
+from app.models.agv_vision import AgvClassRackPolicy, AgvVisionJob, AgvVisionCapture
 from app.api.routes.planning import router as planning_router
 
 
@@ -26,6 +29,12 @@ from app.api.routes.planning import router as planning_router
 async def lifespan(app):
     SavedMap.__table__.create(bind=engine, checkfirst=True)
     PlanningLayer.__table__.create(bind=engine, checkfirst=True)
+    AgvMission.__table__.create(bind=engine, checkfirst=True)
+    AgvMissionCommand.__table__.create(bind=engine, checkfirst=True)
+    AgvCargoEvidence.__table__.create(bind=engine, checkfirst=True)
+    AgvClassRackPolicy.__table__.create(bind=engine, checkfirst=True)
+    AgvVisionJob.__table__.create(bind=engine, checkfirst=True)
+    AgvVisionCapture.__table__.create(bind=engine, checkfirst=True)
     yield
 
 

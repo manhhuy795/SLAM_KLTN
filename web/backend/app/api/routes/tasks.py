@@ -1,6 +1,9 @@
 from datetime import datetime
+import hmac
+import os
+from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
@@ -12,6 +15,9 @@ from app.models.product import Product
 from app.models.robot import Robot
 from app.models.task import Task
 from app.models.task_proof import TaskProof
+from app.models.agv_mission import AgvMission
+from app.models.agv_cargo_evidence import AgvCargoEvidence
+from app.models.agv_vision import AgvVisionCapture, AgvVisionJob
 
 from app.schemas.task import (
     TaskCreate,
@@ -19,6 +25,10 @@ from app.schemas.task import (
     TaskProofCreate,
     TaskProofOut,
     TaskStatusUpdate,
+    AgvPickupTaskCreate,
+    AgvPolicyUpdate,
+    AgvVisionCaptureCreate,
+    AgvVisionReview,
 )
 
 from app.services.event_logger import add_event
@@ -28,6 +38,12 @@ from app.services.robot_command import (
     build_robot_command_response,
 )
 from app.services.task_executor import TaskExecutorError, task_executor
+from app.services.agv_mission_adapter import agv_mission_adapter
+from app.services.agv_mission_store import AgvMissionConflict
+from app.services.agv_vision import (
+    AgvVisionError, agv_pickup_classifier, configure_policy,
+)
+from app.models.saved_map import SavedMap
 
 
 router = APIRouter(
@@ -77,8 +93,9 @@ def task_query():
             Robot,
             PickupLocation,
             DropoffLocation,
+            AgvVisionJob,
         )
-        .join(
+        .outerjoin(
             Product,
             Task.product_id == Product.id,
         )
@@ -90,23 +107,25 @@ def task_query():
             PickupLocation,
             Task.pickup_location_id == PickupLocation.id,
         )
-        .join(
+        .outerjoin(
             DropoffLocation,
             Task.dropoff_location_id == DropoffLocation.id,
         )
+        .outerjoin(AgvVisionJob, AgvVisionJob.task_id == Task.id)
     )
 
 
 def build_task_response(row):
-    task, product, robot, pickup, dropoff = row
+    task, product, robot, pickup, dropoff, vision_job = row
+    unassigned = vision_job is not None and vision_job.status != "ASSIGNED"
 
     return {
         "id": task.id,
         "task_code": task.task_code,
 
-        "product_id": product.id,
-        "product_code": product.product_code,
-        "product_name": product.name,
+        "product_id": product.id if product else None,
+        "product_code": product.product_code if product else None,
+        "product_name": product.name if product else None,
 
         "robot_id": robot.id if robot else None,
         "robot_code": robot.robot_code if robot else None,
@@ -115,9 +134,9 @@ def build_task_response(row):
         "pickup_location_code": pickup.code,
         "pickup_location_name": pickup.name,
 
-        "dropoff_location_id": dropoff.id,
-        "dropoff_location_code": dropoff.code,
-        "dropoff_location_name": dropoff.name,
+        "dropoff_location_id": None if unassigned or dropoff is None else dropoff.id,
+        "dropoff_location_code": None if unassigned or dropoff is None else dropoff.code,
+        "dropoff_location_name": None if unassigned or dropoff is None else dropoff.name,
 
         "status": task.status,
         "progress": task.progress,
@@ -166,6 +185,18 @@ def publish_executor_updates(background_tasks, navigation_status, events):
         )
 
 
+def publish_agv_callback_updates(background_tasks, result, db):
+    """Reuse existing task/event WS shapes for authenticated future AGV callbacks."""
+    if result is None:
+        return False
+    task, events = result
+    for event in events:
+        queue_event(background_tasks, event)
+    row = db.execute(task_query().where(Task.id == task.id)).first()
+    queue_broadcast(background_tasks, "TASK_UPDATED", build_task_response(row))
+    return True
+
+
 @router.get(
     "",
     response_model=list[TaskOut],
@@ -181,6 +212,129 @@ def get_tasks(
         build_task_response(row)
         for row in rows
     ]
+
+
+@router.post("/agv", response_model=TaskOut, status_code=201)
+def create_agv_pickup_task(data: AgvPickupTaskCreate,
+                           background_tasks: BackgroundTasks,
+                           db: Session = Depends(get_db)):
+    """Create a LINE task with an explicitly unassigned destination."""
+    product = db.get(Product, data.product_id) if data.product_id is not None else None
+    robot = db.get(Robot, data.robot_id)
+    pickup = db.scalar(select(Location).where(Location.code == "PICKUP"))
+    maps = db.scalars(select(SavedMap).where(SavedMap.is_selected.is_(True)).limit(2)).all()
+    if ((data.product_id is not None and product is None) or robot is None
+            or robot.robot_type != "LINE" or not robot.is_active):
+        raise HTTPException(400, "Active LINE robot and valid product are required")
+    if pickup is None or pickup.location_type != "PICKUP" or not pickup.is_active or len(maps) != 1:
+        raise HTTPException(409, "Active PICKUP station and selected map are required")
+    task = Task(task_code=f"AGV-{uuid4().hex[:20]}", product_id=product.id if product else None,
+                robot_id=robot.id, pickup_location_id=pickup.id,
+                dropoff_location_id=None, status="WAITING", progress=0,
+                is_paused=False, cancel_requested=False)
+    db.add(task)
+    db.flush()
+    db.add(AgvVisionJob(task_id=task.id, robot_id=robot.id,
+                        map_id=maps[0].id, status="PENDING"))
+    event = add_event(db=db, event_type="TASK_CREATED", source="OPERATOR",
+                      message=f"Task {task.task_code} created for AGV pickup.",
+                      robot_id=robot.id, task_id=task.id,
+                      metadata={"destination_assignment": "PENDING"})
+    db.commit()
+    db.refresh(event)
+    queue_event(background_tasks, event)
+    row = db.execute(task_query().where(Task.id == task.id)).first()
+    response = build_task_response(row)
+    queue_broadcast(background_tasks, "TASK_UPDATED", response)
+    return response
+
+
+@router.put("/agv/class-rack-policy")
+def update_agv_class_rack_policy(data: AgvPolicyUpdate,
+                                  x_wrms_policy_token: str | None = Header(
+                                      default=None, alias="X-WRMS-Policy-Token"),
+                                  db: Session = Depends(get_db)):
+    expected = os.getenv("WRMS_AGV_POLICY_TOKEN", "")
+    if not expected or not x_wrms_policy_token or not hmac.compare_digest(expected, x_wrms_policy_token):
+        raise HTTPException(403, "AGV policy configuration is disabled or unauthorized")
+    operator = db.get(Operator, data.operator_id)
+    if operator is None or not operator.is_active:
+        raise HTTPException(400, "Active operator is required")
+    try:
+        policy = configure_policy(db, map_id=data.map_id, mapping=data.mapping,
+                                  min_confidence=data.min_confidence,
+                                  min_margin=data.min_margin,
+                                  expected_revision=data.expected_revision)
+    except AgvVisionError as error:
+        raise HTTPException(409, str(error)) from error
+    db.commit()
+    return {"map_id": policy.map_id, "revision": policy.revision,
+            "mapping": policy.mapping, "min_confidence": policy.min_confidence,
+            "min_margin": policy.min_margin}
+
+
+@router.post("/{task_id}/vision/captures", status_code=201)
+def capture_agv_pickup_shape(task_id: int, data: AgvVisionCaptureCreate,
+                              x_wrms_vision_token: str | None = Header(
+                                  default=None, alias="X-WRMS-Vision-Token"),
+                              db: Session = Depends(get_db)):
+    expected = os.getenv("WRMS_AGV_VISION_TOKEN", "")
+    if not expected or not x_wrms_vision_token or not hmac.compare_digest(expected, x_wrms_vision_token):
+        raise HTTPException(403, "AGV pickup vision is disabled or unauthorized")
+    try:
+        capture = agv_pickup_classifier.capture(db, task_id=task_id,
+            robot_id=data.robot_id, capture_id=data.capture_id, image_ref=data.image_ref)
+    except AgvVisionError as error:
+        db.rollback()
+        raise HTTPException(409, str(error)) from error
+    db.commit()
+    return {"capture_id": capture.capture_id, "task_id": capture.task_id,
+            "predicted_class": capture.predicted_class,
+            "confidence": capture.confidence, "model_version": capture.model_version,
+            "review_status": capture.review_status}
+
+
+@router.post("/{task_id}/vision/review")
+def review_agv_pickup_shape(task_id: int, data: AgvVisionReview,
+                             background_tasks: BackgroundTasks,
+                             x_wrms_policy_token: str | None = Header(
+                                 default=None, alias="X-WRMS-Policy-Token"),
+                             db: Session = Depends(get_db)):
+    expected = os.getenv("WRMS_AGV_POLICY_TOKEN", "")
+    if not expected or not x_wrms_policy_token or not hmac.compare_digest(expected, x_wrms_policy_token):
+        raise HTTPException(403, "AGV vision review is disabled or unauthorized")
+    try:
+        capture, rack = agv_pickup_classifier.review(db, task_id=task_id,
+            capture_id=data.capture_id, operator_id=data.operator_id, approve=data.approve)
+    except AgvVisionError as error:
+        db.rollback()
+        raise HTTPException(409, str(error)) from error
+    db.commit()
+    row = db.execute(task_query().where(Task.id == task_id)).first()
+    if rack is not None:
+        queue_broadcast(background_tasks, "TASK_UPDATED", build_task_response(row))
+    return {"capture_id": capture.capture_id, "review_status": capture.review_status,
+            "rack_location_id": rack.id if rack else None,
+            "rack_code": rack.code if rack else None}
+
+
+@router.get("/{task_id}/vision")
+def get_agv_vision_review(task_id: int, db: Session = Depends(get_db)):
+    job = db.get(AgvVisionJob, task_id)
+    if job is None:
+        raise HTTPException(404, "AGV vision task not found")
+    captures = db.scalars(select(AgvVisionCapture).where(
+        AgvVisionCapture.task_id == task_id).order_by(AgvVisionCapture.captured_at)).all()
+    return {"task_id": task_id, "status": job.status,
+            "assigned_rack_id": job.assigned_rack_id,
+            "captures": [{"capture_id": item.capture_id, "image_ref": item.image_ref,
+                          "predicted_class": item.predicted_class,
+                          "confidence": item.confidence,
+                          "class_probabilities": item.probabilities,
+                          "model_version": item.model_version,
+                          "review_status": item.review_status,
+                          "confirmed_by": item.confirmed_by}
+                         for item in captures]}
 
 
 @router.get(
@@ -362,10 +516,17 @@ def start_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    robot = db.get(Robot, task.robot_id) if task.robot_id is not None else None
     try:
-        navigation_status, events = task_executor.start_pickup(db, task)
-    except TaskExecutorError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
+        navigation_status, events = (
+            agv_mission_adapter.start_pickup(db, task) if robot and robot.robot_type == "LINE"
+            else task_executor.start_pickup(db, task)
+        )
+    except (TaskExecutorError, AgvMissionConflict) as error:
+        detail = str(error)
+        if detail == "AGV automatic dispatch is disabled or unconfigured":
+            detail = "Task robot does not support AMR navigation"
+        raise HTTPException(status_code=409, detail=detail) from error
 
     publish_executor_updates(background_tasks, navigation_status, events)
     row = db.execute(task_query().where(Task.id == task.id)).first()
@@ -557,11 +718,13 @@ def request_cancel_task(
             detail="Task not found",
         )
 
+    robot = db.get(Robot, task.robot_id) if task.robot_id is not None else None
+
     if task.status in {
         "COMPLETED",
         "FAILED",
         "CANCELLED",
-    }:
+    } and not (robot and robot.robot_type == "LINE" and task.status == "COMPLETED"):
         raise HTTPException(
             status_code=400,
             detail="Terminal task cannot be cancelled",
@@ -572,6 +735,16 @@ def request_cancel_task(
             status_code=400,
             detail="Task has no assigned robot",
         )
+
+    if robot and robot.robot_type == "LINE":
+        try:
+            agv_mission_adapter.cancel(db, task)
+        except AgvMissionConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        row = db.execute(task_query().where(Task.id == task.id)).first()
+        response = build_task_response(row)
+        queue_broadcast(background_tasks, "TASK_UPDATED", response)
+        return response
 
     try:
         navigation_status, executor_events = task_executor.cancel(db, task)
@@ -640,6 +813,10 @@ def update_task_status(
             status_code=404,
             detail="Task not found",
         )
+
+    robot = db.get(Robot, task.robot_id) if task.robot_id is not None else None
+    if robot and robot.robot_type == "LINE":
+        raise HTTPException(status_code=409, detail="LINE task status requires verified mission evidence")
 
     current_status = task.status
     next_status = data.status
@@ -799,6 +976,20 @@ def create_task_proof(
         "AUTO_VERIFIED",
         "MANUAL_CONFIRMED",
     }
+    robot = db.get(Robot, task.robot_id) if task.robot_id is not None else None
+    if (robot and robot.robot_type == "LINE" and is_verified
+            and data.verification_status != "MANUAL_CONFIRMED"):
+        raise HTTPException(status_code=409, detail="AGV automatic proof is disabled")
+    if robot and robot.robot_type == "LINE" and is_verified and data.proof_type == "PICKUP":
+        vision_job = db.get(AgvVisionJob, task.id)
+        if vision_job is not None and vision_job.status != "ASSIGNED":
+            raise HTTPException(status_code=409, detail="AGV destination rack is not assigned")
+    if robot and robot.robot_type == "LINE" and is_verified and data.proof_type == "DELIVERY":
+        latest_capture = db.scalar(select(AgvCargoEvidence).where(
+            AgvCargoEvidence.task_id == task.id).order_by(
+            AgvCargoEvidence.observed_at.desc(), AgvCargoEvidence.created_at.desc()).limit(1))
+        if latest_capture and latest_capture.presence == "PRESENT":
+            raise HTTPException(status_code=409, detail="Cargo is still present; delivery proof is blocked")
     expected_status = {
         "PICKUP": "ARRIVED_AT_PICKUP",
         "DELIVERY": "ARRIVED_AT_DELIVERY",
@@ -897,15 +1088,18 @@ def create_task_proof(
         confirmed_response = build_task_response(row)
 
         try:
-            if proof.proof_type == "PICKUP":
-                navigation_status, executor_events = task_executor.start_delivery(
-                    db, task,
-                )
+            if robot and robot.robot_type == "LINE":
+                if proof.proof_type == "PICKUP":
+                    navigation_status, executor_events = agv_mission_adapter.start_delivery(db, task)
+                else:
+                    navigation_status, executor_events = agv_mission_adapter.complete_delivery(db, task)
+            elif proof.proof_type == "PICKUP":
+                navigation_status, executor_events = task_executor.start_delivery(db, task)
             else:
                 navigation_status, executor_events = task_executor.complete_delivery(
                     db, task,
                 )
-        except TaskExecutorError as error:
+        except (TaskExecutorError, AgvMissionConflict) as error:
             db.rollback()
             raise HTTPException(status_code=409, detail=str(error)) from error
 

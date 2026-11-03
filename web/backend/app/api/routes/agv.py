@@ -4,6 +4,7 @@ import hmac
 import io
 import os
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -17,6 +18,9 @@ from app.models.robot import Robot
 from app.models.robot_status import RobotStatus
 from app.services.agv_runtime import COMMANDS, agv_runtime, status_from_firmware
 from app.services.realtime import queue_broadcast
+from app.services.agv_mission_adapter import agv_mission_adapter
+from app.services.agv_mission_store import AgvMissionConflict
+from app.api.routes.tasks import publish_agv_callback_updates
 
 router = APIRouter(prefix="/agv", tags=["AGV line telemetry"])
 
@@ -42,6 +46,15 @@ class Telemetry(BaseModel):
 class CommandRequest(BaseModel):
     action: str = Field(min_length=1, max_length=32)
     mission_id: str | None = None
+
+
+class MissionEvent(BaseModel):
+    event: Literal["ACKNOWLEDGED", "EXECUTING", "ARRIVED", "STOPPED"]
+    command_id: str
+    task_id: int
+    robot_id: int
+    command_sequence: int
+    evidence: dict | None = None
 
 
 def _robot(db, code):
@@ -121,6 +134,37 @@ def queue_agv_command(robot_code: str, request: CommandRequest,
     queue_broadcast(background_tasks, "AGV_TELEMETRY_UPDATED",
                     agv_runtime.get(robot_code, _commands_enabled()))
     return result
+
+
+@router.post("/{robot_code}/mission-events")
+def receive_mission_event(robot_code: str, data: MissionEvent,
+                          background_tasks: BackgroundTasks,
+                          x_agv_token: str | None = Header(default=None, alias="X-AGV-Token"),
+                          db: Session = Depends(get_db)):
+    _require_device_key(x_agv_token)
+    robot = _robot(db, robot_code)
+    if robot.id != data.robot_id:
+        raise HTTPException(409, "Mission event robot does not own this command")
+    try:
+        agv_mission_adapter._enabled()
+    except AgvMissionConflict as error:
+        raise HTTPException(403, str(error)) from error
+    identity = {"command_id": data.command_id, "task_id": data.task_id,
+                "robot_id": data.robot_id, "command_sequence": data.command_sequence}
+    if data.event == "ACKNOWLEDGED":
+        accepted = agv_mission_adapter.acknowledge(db, **identity)
+    elif data.event == "EXECUTING":
+        accepted = agv_mission_adapter.executing(db, **identity)
+    elif data.event == "ARRIVED":
+        result = agv_mission_adapter.arrival(db, **identity, evidence=data.evidence)
+        accepted = publish_agv_callback_updates(background_tasks, result, db)
+    else:
+        result = agv_mission_adapter.stopped_after_cancel(db, **identity,
+                                                          evidence=data.evidence)
+        accepted = publish_agv_callback_updates(background_tasks, result, db)
+    if not accepted:
+        raise HTTPException(409, "Stale or unverified AGV mission event")
+    return {"accepted": True}
 
 
 @router.get("/{robot_code}/logs")

@@ -1,0 +1,23 @@
+# Phase 3D vision-to-mission handoff
+
+Status: **offline mock workflow implemented; camera and robot operation unverified**. The original `POST /api/tasks` contract and AMR behavior remain unchanged. Automatic AGV hardware dispatch and camera delivery proof remain disabled.
+
+## Workflow and API
+
+1. `POST /api/tasks/agv` creates a LINE Task and durable `AgvVisionJob` at PICKUP with no assigned rack. `Task.dropoff_location_id` is non-null in the existing schema, so it temporarily references PICKUP. The vision job marks this value as **non-navigable**; `TaskOut` presents the three dropoff fields as `null` in create, list, detail, and `TASK_UPDATED` responses until assignment. This widens those response fields to nullable for new pending LINE tasks; legacy and AMR responses retain their prior values.
+2. The existing AGV adapter can move that Task to verified PICKUP. `POST /api/tasks/{id}/vision/captures` accepts a capture ID, robot ID and image reference only after command-correlated PICKUP arrival. The production `AgvPickupClassifier` has no classifier configured; tests inject a mock. The actual MobileNetV3-Small model is not wired into this API or hardware-validated.
+3. `PUT /api/tasks/agv/class-rack-policy` stores an explicit per-selected-map mapping for **cylinder**, **rectangular_box**, and **triangular_prism** to RACK_A–D. No mapping or confidence threshold has a default. An active operator and `WRMS_AGV_POLICY_TOKEN` are required. Policy updates use a revision check. Predictions must have exactly those three finite probabilities summing to approximately one, matching finite confidence, a supported label, model version, and configured confidence and margin thresholds. Missing, invalid and ambiguous results fail before assignment.
+4. `GET /api/tasks/{id}/vision` exposes captures for operator review. `POST /api/tasks/{id}/vision/review` requires an active operator and policy token. Rejection permits another capture. Approval atomically assigns the configured rack to the **same Task**, records the capture and job as reviewed/assigned, and broadcasts the existing `TASK_UPDATED` shape. Duplicate or stale reviews cannot reassign the rack. Classification and review do not dispatch movement.
+5. Existing operator PICKUP proof then invokes `AgvMissionAdapter.start_delivery`, which rechecks the selected map, physical source evidence, assigned rack and route, and creates the durable DELIVERY command once. Delivery arrival, manual delivery proof and correlated return follow the Phase 3C mock lifecycle. Shape classification never serves as cargo-removal proof. Existing Vision Review/operator confirmation paths remain available.
+
+## Persistence, safety and rollback
+
+Three additive tables are created with `checkfirst=True`: `agv_class_rack_policies` (map/revision/mapping/thresholds), `agv_vision_jobs` (Task owner/map, pending/review/assigned state, capture and rack), and `agv_vision_captures` (capture ID, result/probabilities/model version/policy revision, operator review). No existing Task column or constraint was changed. Back up the database before upgrade. For rollback, keep automatic flags off, revert Phase 3D source, and **retain** the new tables/data; dropping them would discard review evidence.
+
+`WRMS_AGV_VISION_TOKEN` gates capture and `WRMS_AGV_POLICY_TOKEN` gates policy changes and review; unset tokens deny these operations. Existing Phase 3C AGV dispatch and camera auto-confirm gates remain off. The PICKUP placeholder is accepted only with a matching durable unassigned vision job and is never a delivery target. A policy or classifier does not authorize physical movement without the separately verified graph, station markers, command evidence and injected transport.
+
+## Validation and remaining gates
+
+Focused Phase 3D tests: **8/8 passed**. Full Python 3.11 backend suite: **95/95 passed** with `PYTHONIOENCODING=utf-8`. The real FastAPI `TestClient` smoke covers nullable Task response fields, new paths and token gates. Test-only `web/backend/requirements-test.txt` adds `httpx>=0.27,<1`; production dependencies are unchanged. `git diff --check` passed. Independent review found and verified repair of a nonfinite confidence bypass and the HTTP test gap.
+
+Before real use: physically validate the 2.38 m × 1.68 m station graph and marker/stop reports, authenticate camera capture provenance and freshness, assess classifier accuracy and thresholds on deployment images, confirm webcam placement, verify class-to-rack policy with operators, and implement coordinated online worker recovery. Neither physical robot commands nor camera hardware were exercised.

@@ -74,6 +74,7 @@ class TaskExecutor:
             if task.status != "DELIVERY_CONFIRMED":
                 raise TaskExecutorError("Delivery is not confirmed")
 
+            self._require_amr_robot(db, task)
             navigation_status = self._cancel_owned_navigation(task.id)
             old_status = task.status
             task.status = "COMPLETED"
@@ -103,6 +104,7 @@ class TaskExecutor:
             if task.is_paused:
                 raise TaskExecutorError("Task is already paused")
 
+            self._require_amr_robot(db, task)
             navigation_status = self._cancel_owned_navigation(task.id)
             task.is_paused = True
             task.updated_at = datetime.utcnow()
@@ -141,6 +143,7 @@ class TaskExecutor:
 
     def cancel(self, db, task):
         with self._lock:
+            self._require_amr_robot(db, task)
             navigation_status = self._cancel_owned_navigation(task.id)
             old_status = task.status
             task.status = "CANCELLED"
@@ -183,6 +186,11 @@ class TaskExecutor:
             ):
                 return None
 
+            try:
+                self._require_amr_robot(db, task)
+            except TaskExecutorError:
+                return None
+
             state = status.get("state")
             if state == "SUCCEEDED":
                 old_status = task.status
@@ -205,12 +213,7 @@ class TaskExecutor:
             return task, [event]
 
     def _validate_task(self, db, task, stage):
-        if task.robot_id is None:
-            raise TaskExecutorError("Task has no assigned robot")
-
-        robot = db.get(Robot, task.robot_id)
-        if robot is None or not robot.is_active:
-            raise TaskExecutorError("Task robot is missing or inactive")
+        self._require_amr_robot(db, task)
 
         location_id = (
             task.pickup_location_id
@@ -241,6 +244,18 @@ class TaskExecutor:
         if pose is None or pose.get("robot_id") != task.robot_id:
             raise TaskExecutorError("Task robot is offline")
         return location
+
+    @staticmethod
+    def _require_amr_robot(db, task):
+        if task.robot_id is None:
+            raise TaskExecutorError("Task has no assigned robot")
+
+        robot = db.get(Robot, task.robot_id)
+        if robot is None or not robot.is_active:
+            raise TaskExecutorError("Task robot is missing or inactive")
+        if robot.robot_type != "AMR":
+            raise TaskExecutorError("Task robot does not support AMR navigation")
+        return robot
 
     @staticmethod
     def _ensure_robot_available(db, task):

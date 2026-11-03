@@ -140,6 +140,8 @@ def create_robot_command(
                 status_code=400,
                 detail="Terminal task cannot receive a command",
             )
+        if robot.robot_type == "LINE" and data.command != "SAFE_STOP":
+            raise HTTPException(status_code=409, detail="LINE mission commands require AGV evidence")
 
     if data.command == "CANCEL" and task is not None:
         task.cancel_requested = True
@@ -243,7 +245,8 @@ def acknowledge_robot_command(
 
         if command.task_id is not None:
             task = db.get(Task, command.task_id)
-            if task is not None:
+            owner = db.get(Robot, task.robot_id) if task and task.robot_id is not None else None
+            if task is not None and (owner is None or owner.robot_type != "LINE"):
                 old_status = task.status
                 if command.command == "PAUSE":
                     task.is_paused = True

@@ -4,19 +4,18 @@ import {
   useState,
 } from "react";
 
-import Header from "./UI/Header";
-import Sidebar from "./UI/Sidebar";
-import RobotStatus from "./UI/RobotStatus";
-import AgvTelemetryPanel from "./UI/AgvTelemetryPanel";
-import ActiveTasks from "./UI/ActiveTasks";
-import WarehouseMap from "./UI/WarehouseMap";
-import DashboardSidePanel from "./UI/DashboardSidePanel";
+import Header from "./shared/ui/Header";
+import Sidebar from "./shared/ui/Sidebar";
+import RobotStatus from "./features/robots/shared/RobotStatus";
+import ActiveTasks from "./features/dashboard/ActiveTasks";
+import WarehouseMap from "./features/map/WarehouseMap";
+import DashboardSidePanel from "./features/dashboard/DashboardSidePanel";
 
-import Tasks from "./UI/Tasks";
-import Robots from "./UI/Robots";
-import MapProducts from "./UI/MapProducts";
-import Alerts from "./UI/Alerts";
-import History from "./UI/History";
+import Tasks from "./features/missions/Tasks";
+import Robots from "./features/robots/shared/Robots";
+import MapProducts from "./features/map/MapProducts";
+import Alerts from "./features/alerts/Alerts";
+import History from "./features/history/History";
 
 import {
   getAlerts,
@@ -36,6 +35,14 @@ const TERMINAL_TASK_STATUSES = new Set([
   "FAILED",
   "CANCELLED",
 ]);
+const PAGES = new Set(['dashboard', 'tasks', 'robots', 'map-products', 'alerts', 'history']);
+
+function readNavigation() {
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get('page') || (params.has('robot') ? 'robots' : 'dashboard');
+  return { page: PAGES.has(page) ? page : 'dashboard',
+    robotCode: page === 'robots' ? params.get('robot') : null };
+}
 
 
 function replaceItem(setter, item) {
@@ -59,8 +66,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] =
     useState(false);
 
-  const [activePage, setActivePage] =
-    useState("dashboard");
+  const [navigation, setNavigation] = useState(readNavigation);
+  const activePage = navigation.page;
 
   const [backendOnline, setBackendOnline] =
     useState(false);
@@ -170,9 +177,20 @@ export default function App() {
   }), [robots, tasks, alerts]);
 
 
-  const handleNavigate = (page) => {
+  useEffect(() => {
+    const restore = () => { setNavigation(readNavigation()); setSidebarOpen(false); };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+
+  const handleNavigate = (page, robotCode = null) => {
     if (!window.dispatchEvent(new Event("planning:before-leave", { cancelable: true }))) return;
-    setActivePage(page);
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    if (page === 'robots' && robotCode) url.searchParams.set('robot', robotCode);
+    else url.searchParams.delete('robot');
+    if (url.href !== window.location.href) window.history.pushState(null, '', url);
+    setNavigation({ page, robotCode: page === 'robots' ? robotCode : null });
     setSidebarOpen(false);
   };
 
@@ -223,8 +241,7 @@ export default function App() {
           "dashboard" && (
           <main className="dashboard-grid">
             <section className="dashboard-main-column">
-              <RobotStatus />
-              <AgvTelemetryPanel />
+              <RobotStatus onRobotDetails={(code) => handleNavigate('robots', code)} />
 
               <ActiveTasks operatorId={operator?.id ?? null} />
 
@@ -259,7 +276,8 @@ export default function App() {
         ========================== */}
         {activePage === "robots" && (
           <main className="page-content">
-            <Robots backendOnline={backendOnline} />
+            <Robots backendOnline={backendOnline} selectedRobotCode={navigation.robotCode}
+              onSelectRobot={(code) => handleNavigate('robots', code)} />
           </main>
         )}
 

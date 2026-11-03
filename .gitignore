@@ -18,6 +18,8 @@ __pycache__/
 # Web / local runtime
 node_modules/
 dist/
+web/test-results/
+web/tests/screenshots/
 __pycache__/
 **/__pycache__/
 *.py[cod]

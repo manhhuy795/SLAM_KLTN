@@ -152,6 +152,22 @@ button:disabled, input:disabled, select:disabled { opacity: .55; cursor: not-all
 .agv-test-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .agv-test-actions button { padding: 6px 10px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text-primary); cursor: pointer; }
 .agv-test-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.agv-mission-config { display: grid; gap: 10px; }
+.agv-mission-config p { margin: 0; font-size: 12px; }
+.agv-readiness { display: flex; gap: 8px; flex-wrap: wrap; }
+.agv-readiness strong { padding: 5px 8px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--font-mono); font-size: 11px; }
+.agv-readiness-list { display: grid; gap: 2px; }
+.agv-config-errors { margin: 0; padding-left: 20px; color: var(--red); font-size: 12px; }
+.agv-mission-config details { border-top: 1px solid var(--border); padding-top: 8px; }
+.agv-mission-config summary { cursor: pointer; font-weight: 700; }
+.agv-config-row, .agv-config-grid { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin: 8px 0; }
+.agv-config-grid > label { flex: 1 1 180px; }
+.agv-mission-config label { display: grid; gap: 4px; font-size: 12px; min-width: 0; }
+.agv-mission-config input, .agv-mission-config select, .agv-mission-config textarea { max-width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text-primary); font: inherit; }
+.agv-mission-config textarea { display: block; width: 100%; font-family: var(--font-mono); }
+.agv-mission-config button { padding: 6px 10px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text-primary); cursor: pointer; }
+.agv-mission-config button:disabled { opacity: .5; cursor: not-allowed; }
+.agv-mission-preview { border-top: 1px solid var(--border); padding-top: 8px; }
 .agv-camera-preview { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); font-size: 12px; }
 .agv-camera-preview p { margin: 0; }
 .agv-camera-preview button, .agv-camera-preview select { width: fit-content; max-width: 100%; padding: 6px 10px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--text-primary); }

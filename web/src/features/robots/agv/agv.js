@@ -13,6 +13,12 @@ async function request(path, robotCode, options = {}) {
   return response.json();
 }
 export const getAgvState = (robotCode = "LINE-01") => request("/state", robotCode);
+export const getAgvMissionConfig = (robotCode) => request("/mission-config", robotCode);
+export const saveAgvMissionConfig = (robotCode, data, token) => request("/mission-config", robotCode, {
+  method: "PUT", headers: { "X-WRMS-Policy-Token": token }, body: JSON.stringify(data),
+});
+export const previewAgvMission = (robotCode, cargoClass, returnStation) =>
+  request(`/mission-preview?${new URLSearchParams({ cargo_class: cargoClass, return_station: returnStation })}`, robotCode);
 export const sendAgvCommand = (action, mission_id, robotCode = "LINE-01") =>
   request("/command", robotCode, {method: "POST", body: JSON.stringify({action, ...(mission_id ? {mission_id} : {})})});
 export const getAgvLogs = (robotCode = "LINE-01") => request("/logs", robotCode);

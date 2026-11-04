@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
@@ -16,11 +16,15 @@ from app.api.routes.robots import build_robot_response
 from app.db.deps import get_db
 from app.models.robot import Robot
 from app.models.robot_status import RobotStatus
+from app.models.operator import Operator
 from app.services.agv_runtime import COMMANDS, agv_runtime, status_from_firmware
 from app.services.realtime import queue_broadcast
 from app.services.agv_mission_adapter import agv_mission_adapter
 from app.services.agv_mission_store import AgvMissionConflict
 from app.api.routes.tasks import publish_agv_callback_updates
+from app.services.agv_mission_config import (
+    MissionConfigError, preview, readiness, save_config, selected_map,
+)
 
 router = APIRouter(prefix="/agv", tags=["AGV line telemetry"])
 
@@ -55,6 +59,13 @@ class MissionEvent(BaseModel):
     robot_id: int
     command_sequence: int
     evidence: dict | None = None
+
+
+class MissionConfigUpdate(BaseModel):
+    station_location_ids: dict[str, int]
+    graph: dict | None = None
+    expected_revision: int | None = None
+    operator_id: int
 
 
 def _robot(db, code):
@@ -110,6 +121,45 @@ def ingest_telemetry(robot_code: str, data: Telemetry,
 def get_agv_state(robot_code: str, db: Session = Depends(get_db)):
     _robot(db, robot_code)
     return agv_runtime.get(robot_code, _commands_enabled())
+
+
+@router.get("/{robot_code}/mission-config")
+def get_mission_config(robot_code: str, db: Session = Depends(get_db)):
+    return readiness(db, _robot(db, robot_code))
+
+
+@router.put("/{robot_code}/mission-config")
+def update_mission_config(robot_code: str, data: MissionConfigUpdate,
+                          x_wrms_policy_token: str | None = Header(
+                              default=None, alias="X-WRMS-Policy-Token"),
+                          db: Session = Depends(get_db)):
+    expected = os.getenv("WRMS_AGV_POLICY_TOKEN", "")
+    if not expected or not x_wrms_policy_token or not hmac.compare_digest(expected, x_wrms_policy_token):
+        raise HTTPException(403, "AGV mission configuration is disabled or unauthorized")
+    operator = db.get(Operator, data.operator_id)
+    if operator is None or not operator.is_active:
+        raise HTTPException(400, "Active operator is required")
+    robot = _robot(db, robot_code)
+    saved_map = selected_map(db)
+    if saved_map is None:
+        raise HTTPException(409, "Select exactly one saved map")
+    try:
+        save_config(db, robot=robot, saved_map=saved_map,
+                    station_location_ids=data.station_location_ids, graph=data.graph,
+                    expected_revision=data.expected_revision)
+    except MissionConfigError as error:
+        db.rollback()
+        raise HTTPException(409, str(error)) from error
+    db.commit()
+    return readiness(db, robot)
+
+
+@router.get("/{robot_code}/mission-preview")
+def preview_mission(robot_code: str,
+                    cargo_class: str = Query(...),
+                    return_station: str = Query("HOME"),
+                    db: Session = Depends(get_db)):
+    return preview(db, _robot(db, robot_code), cargo_class, return_station)
 
 
 @router.post("/{robot_code}/command")

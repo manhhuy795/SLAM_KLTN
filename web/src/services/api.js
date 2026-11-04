@@ -129,6 +129,14 @@ export function getTasks() {
   return request("/tasks");
 }
 
+export function updateAgvClassRackPolicy(data, token) {
+  return request("/tasks/agv/class-rack-policy", {
+    method: "PUT",
+    headers: { "X-WRMS-Policy-Token": token },
+    body: JSON.stringify(data),
+  });
+}
+
 export function getTask(taskId) {
   return request(`/tasks/${taskId}`);
 }

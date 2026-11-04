@@ -56,6 +56,9 @@ class MapSessionHttpTest(unittest.TestCase):
         code,layer=self.request("/maps/"+m["id"]+"/planning","PUT",json.dumps(dict(revision=0,objects=[point])).encode())
         self.assertEqual(code,200,layer)
         report["planning_revision"]=layer["revision"];self.post("/ros/map-session/status",report)
+        self.post("/ros/state", dict(bridge_online=True, nav2_online=True,
+            slam_online=True, map_status="RECEIVED", lidar_online=True,
+            localization_available=True, tf_available=True))
         data=dict(x=999,y=999,map_id=m["id"],planning_point_id=point["id"],planning_revision=layer["revision"])
         code,status=self.post("/ros/navigation/goal",data)
         self.assertEqual(code,200,status)

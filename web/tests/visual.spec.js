@@ -66,6 +66,26 @@ async function mockBackend(page, mode) {
         telemetry: { x: 0.5, y: 0.7, yaw: 0, state: 'IDLE', line_mask: 5,
           ticks_l: 10, ticks_r: 11, speed: 0, dist: 0.2, pwm_l: 0, pwm_r: 0, line_err: 0 },
         trail: [[0, 0], [0.5, 0.7]], last_ack_id: 1, command_status: 'NONE' },
+      '/agv/LINE-01/mission-config': { robot_code: 'LINE-01', robot_id: 2,
+        selected_map: { id: 'qa-map', name: 'QA warehouse' }, station_location_ids: {},
+        graph: null, policy: null, revision: null, simulation_status: 'BLOCKED',
+        hardware_status: 'BLOCKED', hardware_blockers: ['Physical station evidence unverified'],
+        errors: ['HOME: select an existing active location', 'PICKUP: select an existing active location'],
+        checklist: [
+          { id: 'robot', ok: true, detail: 'OK' },
+          { id: 'backend', ok: true, detail: 'OK' },
+          { id: 'telemetry', ok: true, detail: 'OK' },
+          { id: 'map', ok: true, detail: 'OK' },
+          { id: 'HOME', ok: false, detail: 'Configure HOME' },
+          { id: 'PICKUP', ok: false, detail: 'Configure PICKUP' },
+          { id: 'racks', ok: false, detail: 'Configure racks' },
+          { id: 'graph', ok: false, detail: 'Provide routes' },
+          { id: 'class_mapping', ok: false, detail: 'Map classes' },
+          { id: 'vision', ok: false, detail: 'Validate capture' },
+          { id: 'dispatch', ok: false, detail: 'Disabled' },
+        ] },
+      '/agv/LINE-01/mission-preview': { validation: { simulation_status: 'BLOCKED',
+        errors: ['HOME: select an existing active location'] }, sequence: [], target_rack: null },
     };
     if (!(path in responses)) {
       unknown.push(path);
@@ -259,6 +279,21 @@ test('LINE details separate real telemetry from unavailable sensors and test too
   await expect(page.getByRole('img', { name: /Sơ đồ thử nghiệm AGV/ })).toBeVisible();
   await expect(page.locator('.agv-telemetry-json')).toContainText('"ticks_l": 10');
   await expect(page.getByRole('button', { name: 'M1', exact: true })).toBeDisabled();
+  await checkPage(page, network);
+});
+
+test('LINE mission configuration stays in Robot Management and preview is read-only', async ({ page }) => {
+  const network = await mockBackend(page, 'fallback');
+  await page.goto('/?page=robots&robot=LINE-01');
+  const config = page.getByLabel('AGV mission configuration');
+  await expect(config).toBeVisible();
+  await expect(config).toContainText('MISSION CONFIGURATION');
+  await expect(config).toContainText('HOME: select an existing active location');
+  await expect(config).toContainText('BLOCKED');
+  await config.getByLabel('Cargo class').selectOption('cylinder');
+  await config.getByRole('button', { name: 'Xem tuyến, không tạo task' }).click();
+  await expect(config).toContainText('HOME → PICKUP → CLASSIFY');
+  await expect(page.locator('.dashboard-grid')).toHaveCount(0);
   await checkPage(page, network);
 });
 

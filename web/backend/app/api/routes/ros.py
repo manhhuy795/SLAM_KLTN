@@ -136,6 +136,9 @@ def create_navigation_goal(
 
     if planning_point:
         x, y, yaw = point["x"], point["y"], point["yaw"]
+    bridge = ros_state.get_status()
+    if not bridge.get("bridge_online") or not bridge.get("nav2_online"):
+        raise HTTPException(409, "ROS bridge or Nav2 is offline")
     try:
         status = navigation_state.create_goal(
             x,

@@ -19,6 +19,7 @@ from app.models.event_log import EventLog
 from app.models.agv_mission import AgvMission, AgvMissionCommand
 from app.models.agv_cargo_evidence import AgvCargoEvidence
 from app.models.agv_vision import AgvClassRackPolicy, AgvVisionJob, AgvVisionCapture
+from app.models.agv_mission_config import AgvMissionConfig
 
 
 def migrate_nullable_task_fields(path):

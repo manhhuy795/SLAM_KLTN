@@ -277,6 +277,7 @@ export default function App() {
         {activePage === "robots" && (
           <main className="page-content">
             <Robots backendOnline={backendOnline} selectedRobotCode={navigation.robotCode}
+              operatorId={operator?.id ?? null} onNavigate={handleNavigate}
               onSelectRobot={(code) => handleNavigate('robots', code)} />
           </main>
         )}

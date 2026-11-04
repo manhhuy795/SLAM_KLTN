@@ -21,6 +21,7 @@ import {
 import UsbCameraPreview from '../agv/UsbCameraPreview';
 import { getAgvState } from '../agv/agv';
 import AgvTelemetryPanel, { AgvDiagnosticsPanel } from '../agv/AgvTelemetryPanel';
+import AgvMissionConfiguration from '../agv/AgvMissionConfiguration';
 
 
 const TERMINAL_TASK_STATUSES = new Set([
@@ -30,7 +31,7 @@ const TERMINAL_TASK_STATUSES = new Set([
 ]);
 
 
-export default function Robots({ backendOnline, selectedRobotCode, onSelectRobot }) {
+export default function Robots({ backendOnline, selectedRobotCode, operatorId, onNavigate, onSelectRobot }) {
   const [robots, setRobots] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -401,7 +402,8 @@ export default function Robots({ backendOnline, selectedRobotCode, onSelectRobot
 
 
           {tab === 'overview' && (
-            robot.robot_type === 'LINE' ? <AgvOverview robot={robot} task={activeTask} state={agvState} /> : <RobotOverview
+            robot.robot_type === 'LINE' ? <AgvOverview robot={robot} task={activeTask} state={agvState}
+              operatorId={operatorId} onNavigate={onNavigate} /> : <RobotOverview
               robot={robot}
               task={activeTask}
               alerts={robotAlerts}
@@ -441,7 +443,7 @@ export default function Robots({ backendOnline, selectedRobotCode, onSelectRobot
 }
 
 
-function AgvOverview({ robot, task, state }) {
+function AgvOverview({ robot, task, state, operatorId, onNavigate }) {
   return <div className="robot-detail-content">
     <div className="robot-overview-grid">
       <InfoCard icon={Radio} label="Kết nối ESP32-S3" value={state?.connected ? 'ONLINE' : 'OFFLINE'} />
@@ -456,6 +458,8 @@ function AgvOverview({ robot, task, state }) {
         <InfoRow label="Vị trí đã xác minh" value="N/A" />
       </div>
     </section>
+    <AgvMissionConfiguration robot={robot} operatorId={operatorId} agvState={state}
+      onOpenMap={() => onNavigate('map-products')} />
   </div>;
 }
 

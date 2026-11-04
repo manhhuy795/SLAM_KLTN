@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect
 
 from app.api.routes.robots import router as robots_router
 from app.api.routes.agv import router as agv_router
@@ -22,6 +23,7 @@ from app.models.planning_layer import PlanningLayer
 from app.models.agv_mission import AgvMission, AgvMissionCommand
 from app.models.agv_cargo_evidence import AgvCargoEvidence
 from app.models.agv_vision import AgvClassRackPolicy, AgvVisionJob, AgvVisionCapture
+from app.models.agv_mission_config import AgvMissionConfig
 from app.api.routes.planning import router as planning_router
 
 
@@ -35,6 +37,8 @@ async def lifespan(app):
     AgvClassRackPolicy.__table__.create(bind=engine, checkfirst=True)
     AgvVisionJob.__table__.create(bind=engine, checkfirst=True)
     AgvVisionCapture.__table__.create(bind=engine, checkfirst=True)
+    if inspect(engine).has_table("robots"):
+        AgvMissionConfig.__table__.create(bind=engine, checkfirst=True)
     yield
 
 

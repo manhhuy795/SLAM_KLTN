@@ -474,6 +474,21 @@ class WrmsSmokeTest(unittest.TestCase):
         self.assertEqual(code, 200)
         rack_test = next(item for item in locations if item["code"] == "RACK-TEST")
 
+        self.request("/ros/state", "POST", {
+            "bridge_online": False, "nav2_online": True, "slam_online": True,
+            "map_status": "RECEIVED", "lidar_online": True,
+            "localization_available": True, "tf_available": True,
+        })
+        self.assertEqual(self.request("/ros/navigation/goal", "POST", {
+            "x": 0.5, "y": 0.0,
+        })[0], 409)
+        self.assertEqual(self.request("/ros/navigation/command"), (200, None))
+        self.request("/ros/state", "POST", {
+            "bridge_online": True, "nav2_online": True, "slam_online": True,
+            "map_status": "RECEIVED", "lidar_online": True,
+            "localization_available": True, "tf_available": True,
+        })
+
         with connect(self.ws_url) as websocket:
             code, goal = self.request("/ros/navigation/goal", "POST", {
                 # Coordinates are resolved again by the backend from location_id.

@@ -43,6 +43,47 @@ class RosPosePayload(BaseModel):
     yaw: float
 
 
+class AmrHardwareDiagnostics(BaseModel):
+    serial_connected: bool | None = None
+    encoder_online: bool | None = None
+    emergency_stop: bool | None = None
+    left_encoder_count: int | None = None
+    right_encoder_count: int | None = None
+    fault_reason: str = Field(default="", max_length=256)
+    serial_error: str = Field(default="", max_length=256)
+
+
+class AmrOdometry(BaseModel):
+    frame_id: Literal["odom"]
+    child_frame_id: Literal["base_link"]
+    x: float = Field(allow_inf_nan=False)
+    y: float = Field(allow_inf_nan=False)
+    yaw: float = Field(allow_inf_nan=False)
+    linear_mps: float = Field(allow_inf_nan=False)
+    angular_radps: float = Field(allow_inf_nan=False)
+
+
+class AmrHardwareTelemetryPayload(BaseModel):
+    robot_id: int = Field(gt=0)
+    source: Literal["HARDWARE", "SIMULATION"]
+    diagnostics: AmrHardwareDiagnostics | None = None
+    odometry: AmrOdometry | None = None
+    status_age_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    odom_age_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.source == "SIMULATION" and self.diagnostics is not None:
+            raise ValueError("Simulation odometry cannot carry physical hardware diagnostics")
+        if (self.diagnostics is None) != (self.status_age_ms is None):
+            raise ValueError("Diagnostic data and age must be provided together")
+        if (self.odometry is None) != (self.odom_age_ms is None):
+            raise ValueError("Odometry data and age must be provided together")
+        if self.diagnostics is None and self.odometry is None:
+            raise ValueError("At least one telemetry source is required")
+        return self
+
+
 class RosStatusPayload(BaseModel):
     bridge_online: bool = True
     nav2_online: bool = False

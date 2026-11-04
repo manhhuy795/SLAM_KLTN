@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
 from app.models.location import Location
+from app.models.robot import Robot
 from app.models.task import Task
 from app.schemas.ros import (
     NavigationGoal,
@@ -11,6 +12,7 @@ from app.schemas.ros import (
     RosMapPayload,
     RosPosePayload,
     RosStatusPayload,
+    AmrHardwareTelemetryPayload,
 )
 from app.services.navigation import navigation_state
 from app.services.realtime import queue_broadcast, queue_event
@@ -93,6 +95,29 @@ def update_ros_pose(
         "ROBOT_POSE_UPDATED",
         payload,
     )
+    return payload
+
+
+@router.get("/hardware-telemetry/{robot_id}")
+def get_amr_hardware_telemetry(robot_id: int, source: str = "HARDWARE",
+                               db: Session = Depends(get_db)):
+    robot = db.get(Robot, robot_id)
+    if robot is None or robot.robot_type != "AMR":
+        raise HTTPException(404, "AMR robot not found")
+    if source not in {"HARDWARE", "SIMULATION"}:
+        raise HTTPException(422, "Invalid telemetry source")
+    return ros_state.get_amr_telemetry(robot_id, source)
+
+
+@router.post("/hardware-telemetry")
+def update_amr_hardware_telemetry(data: AmrHardwareTelemetryPayload,
+                                  background_tasks: BackgroundTasks,
+                                  db: Session = Depends(get_db)):
+    robot = db.get(Robot, data.robot_id)
+    if robot is None or robot.robot_type != "AMR" or not robot.is_active:
+        raise HTTPException(404, "Active AMR robot not found")
+    payload = ros_state.set_amr_telemetry(data.model_dump())
+    queue_broadcast(background_tasks, "AMR_HARDWARE_TELEMETRY_UPDATED", payload)
     return payload
 
 

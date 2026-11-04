@@ -483,6 +483,7 @@ class WrmsSmokeTest(unittest.TestCase):
             "x": 0.5, "y": 0.0,
         })[0], 409)
         self.assertEqual(self.request("/ros/navigation/command"), (200, None))
+
         self.request("/ros/state", "POST", {
             "bridge_online": True, "nav2_online": True, "slam_online": True,
             "map_status": "RECEIVED", "lidar_online": True,
@@ -556,6 +557,35 @@ class WrmsSmokeTest(unittest.TestCase):
         self.assertEqual(self.request("/ros/navigation/cancel", "POST")[1]["state"], "CANCELLED")
         self.assertEqual(self.request("/ros/navigation/command"), (200, None))
 
+    def test_amr_hardware_telemetry_http_and_websocket(self):
+        from websockets.sync.client import connect
+        robots = self.request("/robots")[1]
+        amr = next(robot for robot in robots if robot["robot_code"] == "AMR-01")
+        line = next(robot for robot in robots if robot["robot_code"] == "LINE-01")
+        payload = dict(robot_id=amr["id"], source="HARDWARE",
+                       diagnostics=dict(serial_connected=True, encoder_online=True,
+                                        emergency_stop=True, left_encoder_count=10,
+                                        right_encoder_count=11, fault_reason="", serial_error=""),
+                       status_age_ms=0, odometry=dict(frame_id="odom",
+                           child_frame_id="base_link", x=0.2, y=0.3, yaw=0,
+                           linear_mps=0.0, angular_radps=0.0), odom_age_ms=0)
+        with connect(self.ws_url) as websocket:
+            code, result = self.request("/ros/hardware-telemetry", "POST", payload)
+            self.assertEqual(code, 200, result)
+            self.assertEqual(result["state"], "ONLINE")
+            event = json.loads(websocket.recv(timeout=5))
+            self.assertEqual(event["type"], "AMR_HARDWARE_TELEMETRY_UPDATED")
+            self.assertEqual(event["data"]["robot_id"], amr["id"])
+        self.assertEqual(self.request(f"/ros/hardware-telemetry/{amr['id']}")[1]
+                         ["diagnostics"]["left_encoder_count"], 10)
+        self.assertEqual(self.request(f"/ros/hardware-telemetry/{line['id']}")[0], 404)
+        self.assertEqual(self.request("/ros/hardware-telemetry", "POST",
+                                      {**payload, "robot_id": line["id"]})[0], 404)
+        self.assertEqual(self.request("/ros/hardware-telemetry", "POST",
+                                      {**payload, "source": "SIMULATION"})[0], 422)
+        self.assertEqual(self.request("/ros/hardware-telemetry", "POST",
+                                      {**payload, "odometry": {**payload["odometry"],
+                                                               "frame_id": "map"}})[0], 422)
     def test_ros_websocket_events(self):
         try:
             import websockets

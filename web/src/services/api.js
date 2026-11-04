@@ -261,6 +261,10 @@ export function getRosPose() {
   return request("/ros/pose");
 }
 
+export function getAmrHardwareTelemetry(robotId, source) {
+  return request(`/ros/hardware-telemetry/${robotId}?source=${source}`);
+}
+
 export function getNavigationStatus() {
   return request("/ros/navigation/status");
 }

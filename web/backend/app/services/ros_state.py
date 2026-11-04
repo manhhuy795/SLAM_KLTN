@@ -1,6 +1,6 @@
 from copy import deepcopy
 from threading import Lock
-from time import monotonic
+from time import monotonic, time
 
 
 class RosState:
@@ -23,6 +23,45 @@ class RosState:
         }
         self._map = None
         self._pose = None
+        self._amr_telemetry = {}
+
+    def set_amr_telemetry(self, data):
+        with self._lock:
+            key = (data["robot_id"], data["source"])
+            self._amr_telemetry[key] = (deepcopy(data), monotonic(), time())
+            return self._amr_telemetry_status(key)
+
+    def get_amr_telemetry(self, robot_id, source):
+        with self._lock:
+            return self._amr_telemetry_status((robot_id, source))
+
+    def _amr_telemetry_status(self, key):
+        entry = self._amr_telemetry.get(key)
+        result = {"robot_id": key[0], "source": key[1], "state": "OFFLINE",
+                  "diagnostics_state": "OFFLINE", "odometry_state": "OFFLINE",
+                  "diagnostics": None, "odometry": None, "last_update": None}
+        if entry is None:
+            return result
+        data, received, timestamp = entry
+        elapsed_ms = max(0, monotonic() - received) * 1000
+        def freshness(age):
+            if age is None or age + elapsed_ms > 5000:
+                return "OFFLINE"
+            return "STALE" if age + elapsed_ms > 2000 else "ONLINE"
+        result.update(diagnostics_state=freshness(data["status_age_ms"]),
+                      odometry_state=freshness(data["odom_age_ms"]),
+                      diagnostics=deepcopy(data["diagnostics"]),
+                      odometry=deepcopy(data["odometry"]), last_update=timestamp)
+        if key[1] == "HARDWARE":
+            if not (data["diagnostics"] or {}).get("encoder_online"):
+                result["odometry_state"] = "OFFLINE"
+            elif result["diagnostics_state"] == "OFFLINE":
+                result["odometry_state"] = "OFFLINE"
+            elif result["diagnostics_state"] == "STALE" and result["odometry_state"] == "ONLINE":
+                result["odometry_state"] = "STALE"
+        result["state"] = (result["diagnostics_state"] if key[1] == "HARDWARE"
+                           else result["odometry_state"])
+        return result
 
     def set_status(self, data):
         with self._lock:

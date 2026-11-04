@@ -17,6 +17,8 @@ def launch_bridge(context):
     parameters = [config_file, {
         "use_sim_time": LaunchConfiguration("use_sim_time").perform(context) == "true",
         "managed_maps": LaunchConfiguration("managed_maps").perform(context) == "true",
+        "telemetry_only": LaunchConfiguration("telemetry_only").perform(context) == "true",
+        "telemetry_source": LaunchConfiguration("telemetry_source").perform(context),
     }]
     backend_url = LaunchConfiguration("backend_url").perform(context)
 
@@ -44,6 +46,9 @@ def generate_launch_description():
     return LaunchDescription([
         backend_url,
         DeclareLaunchArgument("managed_maps", default_value="false", choices=["true", "false"]),
+        DeclareLaunchArgument("telemetry_only", default_value="false", choices=["true", "false"]),
+        DeclareLaunchArgument("telemetry_source", default_value="SIMULATION",
+                              choices=["HARDWARE", "SIMULATION"]),
         DeclareLaunchArgument(
             "use_sim_time",
             default_value="true",

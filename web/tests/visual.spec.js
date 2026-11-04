@@ -56,6 +56,17 @@ async function mockBackend(page, mode) {
       '/ros/map': mode === 'fallback' ? null : map,
       '/ros/pose': { robot_id: 1, frame_id: 'map', timestamp: Date.now() / 1000,
         x: 2, y: 1.5, yaw: 0 },
+      '/ros/hardware-telemetry/1': new URL(request.url()).searchParams.get('source') === 'SIMULATION'
+        ? { robot_id: 1, source: 'SIMULATION', state: 'ONLINE', diagnostics_state: 'OFFLINE',
+            odometry_state: 'ONLINE', diagnostics: null,
+            odometry: { x: 3, y: 1, yaw: 0, linear_mps: 0, angular_radps: 0 },
+            last_update: Date.now() / 1000 }
+        : { robot_id: 1, source: 'HARDWARE', state: 'ONLINE', diagnostics_state: 'ONLINE',
+            odometry_state: 'ONLINE', diagnostics: { serial_connected: true, encoder_online: true,
+              emergency_stop: true, left_encoder_count: 10, right_encoder_count: 11,
+              fault_reason: 'QA fault', serial_error: '' },
+            odometry: { x: 0.2, y: 0.3, yaw: 0, linear_mps: 0, angular_radps: 0 },
+            last_update: Date.now() / 1000 },
       '/ros/navigation/status': { state: 'IDLE', goal: null, distance_remaining: null },
       '/ros/navigation/path': { frame_id: 'map', poses: [{ x: 0.5, y: 0.5 }, { x: 2, y: 1.5 }] },
       '/ros/map-session': { enabled: false, state: 'OFFLINE', map_id: null, map_hash: null },
@@ -279,6 +290,31 @@ test('LINE details separate real telemetry from unavailable sensors and test too
   await expect(page.getByRole('img', { name: /Sơ đồ thử nghiệm AGV/ })).toBeVisible();
   await expect(page.locator('.agv-telemetry-json')).toContainText('"ticks_l": 10');
   await expect(page.getByRole('button', { name: 'M1', exact: true })).toBeDisabled();
+  await checkPage(page, network);
+});
+
+test('AMR telemetry separates hardware, simulation and stale measurements', async ({ page }) => {
+  const network = await mockBackend(page, 'fallback');
+  await page.goto('/?page=robots&robot=AMR-01');
+  await page.getByRole('button', { name: 'Cảm biến' }).click();
+  const telemetry = page.getByLabel('AMR telemetry');
+  await expect(telemetry).toContainText('HARDWARE');
+  await expect(telemetry).toContainText('10 ticks');
+  await expect(telemetry).toContainText('E-STOP');
+  await expect(telemetry).toContainText('ACTIVE');
+  await expect(telemetry).toContainText('UNCALIBRATED');
+  await telemetry.getByLabel('Source').selectOption('SIMULATION');
+  await expect(telemetry).toContainText('3.00 m');
+  await expect(telemetry).not.toContainText('10 ticks');
+  await page.route(/\/api\/ros\/hardware-telemetry\/1\?source=HARDWARE/, route => route.fulfill({ json: {
+    robot_id: 1, source: 'HARDWARE', state: 'STALE', diagnostics_state: 'STALE',
+    odometry_state: 'STALE', diagnostics: { serial_connected: true, emergency_stop: false,
+      left_encoder_count: 999 }, odometry: { x: 999, y: 999 }, last_update: 100,
+  } }));
+  await telemetry.getByLabel('Source').selectOption('HARDWARE');
+  await expect(telemetry).toContainText('STALE');
+  await expect(telemetry).not.toContainText('999');
+  await expect(telemetry).toContainText('UNKNOWN');
   await checkPage(page, network);
 });
 

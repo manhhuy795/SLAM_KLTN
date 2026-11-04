@@ -75,8 +75,43 @@ Diagnostics reflect host latch/feedback state, not proof that physical PWM stopp
 
 Status includes serial connection/error, encoder freshness and last device
 timestamp/boot ID, command age, host E-stop/fault, counts, targets and malformed
-count. No new service or web endpoint. Parameters are startup-only; restart
+count. Parameters are startup-only; restart
 after YAML edits (runtime edits are rejected).
+
+## Read-only WRMS telemetry (Phase 4D.2)
+
+The Web Bridge forwards `/hardware/status` and `/odom` to FastAPI
+`POST /api/ros/hardware-telemetry`. FastAPI publishes
+`AMR_HARDWARE_TELEMETRY_UPDATED` on the existing WebSocket; Robot Management >
+AMR-01 > Cảm biến reads `GET /api/ros/hardware-telemetry/{robot_id}`. The UI
+separates HARDWARE and SIMULATION and marks samples STALE after 2 seconds and
+OFFLINE after 5 seconds. Encoder counts require fresh encoder diagnostics.
+Odometry (`odom`, not `map`) and velocity remain **UNCALIBRATED**; neither is a
+verified warehouse position. This telemetry path has no motor or E-stop control.
+
+Run FastAPI and the existing React frontend as documented in the repository.
+On an isolated Ubuntu ROS 2 Jazzy domain, with the existing hardware node
+already running in an authorized stationary bench setup, launch only the
+read-only bridge:
+
+    source /opt/ros/jazzy/setup.bash
+    cd ~/SLAM_KLTN/ros2_ws
+    source install/setup.bash
+    ros2 launch web_bridge web_bridge.launch.py telemetry_only:=true telemetry_source:=HARDWARE use_sim_time:=false backend_url:=http://127.0.0.1:8000
+
+The normal simulation Web Bridge defaults to SIMULATION and continues the
+existing Gazebo/Nav2 path. Do not run simulation and hardware odometry on the
+same ROS domain: both publish `/odom`, which has no publisher identity in the
+message. `telemetry_only` never polls Nav2 commands or manages maps. Keep the
+backend on a trusted network; the bridge ingest endpoint follows the existing
+ROS bridge authentication model.
+
+Manual read-only validation: inspect `ros2 topic echo /hardware/status --once`
+and `ros2 topic echo /odom --once`, then read the API and AMR Sensors tab.
+Confirm ESP32 connectivity, encoder counts, E-stop/fault and the last update;
+disconnect the source and observe STALE then OFFLINE. `/odom` requires actual
+encoder feedback; without it, the UI shows N/A. Physical validation remains
+pending and is not covered by mock tests.
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |

@@ -10,9 +10,10 @@ from urllib.request import Request, urlopen
 
 import rclpy
 from action_msgs.msg import GoalStatus
+from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.action import ActionClient
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
@@ -24,6 +25,7 @@ from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from .scan_diagnostics import ScanDiagnostics, scan_status
+from .hardware_telemetry import parse_hardware_status, parse_odometry
 from .time_utils import ros_time_to_seconds, transform_timestamp
 
 
@@ -53,6 +55,8 @@ class WebBridge(Node):
         self.declare_parameter("scan_offline_sec", 3.0)
         self.declare_parameter("map_stale_sec", 10.0)
         self.declare_parameter("navigation_poll_period_sec", 0.2)
+        self.declare_parameter("telemetry_source", "SIMULATION")
+        self.declare_parameter("telemetry_only", False)
 
         self.backend_url = str(
             self.get_parameter("backend_url").value
@@ -85,6 +89,14 @@ class WebBridge(Node):
         self.navigation_poll_period = float(
             self.get_parameter("navigation_poll_period_sec").value
         )
+        self.telemetry_source = str(self.get_parameter("telemetry_source").value)
+        self.telemetry_only = bool(self.get_parameter("telemetry_only").value)
+        if self.telemetry_source not in {"HARDWARE", "SIMULATION"}:
+            raise ValueError("telemetry_source must be HARDWARE or SIMULATION")
+        if self.telemetry_source == "HARDWARE" and not self.telemetry_only:
+            raise ValueError("HARDWARE bridge must run in telemetry_only mode")
+        if self.telemetry_only and self.get_parameter("managed_maps").value:
+            raise ValueError("telemetry_only cannot manage Nav2 maps")
 
         self.tf_buffer = Buffer(node=self)
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -106,6 +118,12 @@ class WebBridge(Node):
             self._scan_callback,
             qos_profile_sensor_data,
         )
+        self.odom_sub = self.create_subscription(
+            Odometry, "/odom", self._odom_callback, 20,
+        )
+        self.hardware_sub = (self.create_subscription(
+            DiagnosticArray, "/hardware/status", self._hardware_status_callback, 10,
+        ) if self.telemetry_source == "HARDWARE" else None)
         self.path_sub = self.create_subscription(
             Path,
             self.navigation_path_topic,
@@ -138,6 +156,12 @@ class WebBridge(Node):
             float(self.get_parameter("scan_offline_sec").value),
         )
         self._last_pose = None
+        self._latest_hardware_status = None
+        self._last_hardware_status = None
+        self._latest_odom = None
+        self._last_odom = None
+        self._last_telemetry_sent = (None, None)
+        self._next_telemetry_publish = 0.0
         self._next_pose_publish = 0.0
         self._next_heartbeat = 0.0
         self._last_warning = 0.0
@@ -202,6 +226,23 @@ class WebBridge(Node):
     def _scan_callback(self, message):
         self._scan.receive(message, time.monotonic())
 
+    def _hardware_status_callback(self, message):
+        parsed = parse_hardware_status(message)
+        if parsed is not None:
+            self._latest_hardware_status = parsed
+            self._last_hardware_status = time.monotonic()
+
+    def _odom_callback(self, message):
+        if (self.telemetry_source == "HARDWARE"
+                and (not (self._latest_hardware_status or {}).get("encoder_online")
+                     or self._last_hardware_status is None
+                     or time.monotonic() - self._last_hardware_status > 2.0)):
+            return
+        parsed = parse_odometry(message, "odom", self.robot_base_frame)
+        if parsed is not None:
+            self._latest_odom = parsed
+            self._last_odom = time.monotonic()
+
     def _path_callback(self, message):
         if self._navigation_command is None:
             return
@@ -247,6 +288,23 @@ class WebBridge(Node):
 
     def _publish_updates(self):
         now = time.monotonic()
+
+        if now >= self._next_telemetry_publish:
+            self._next_telemetry_publish = now + 0.2
+            marker = (self._last_hardware_status, self._last_odom)
+            if marker != self._last_telemetry_sent and any(value is not None for value in marker):
+                self._last_telemetry_sent = marker
+                self._enqueue("/api/ros/hardware-telemetry", {
+                    "robot_id": self.robot_id, "source": self.telemetry_source,
+                    "diagnostics": self._latest_hardware_status,
+                    "odometry": self._latest_odom,
+                    "status_age_ms": ((now - self._last_hardware_status) * 1000
+                                      if self._last_hardware_status is not None else None),
+                    "odom_age_ms": ((now - self._last_odom) * 1000
+                                    if self._last_odom is not None else None),
+                })
+        if self.telemetry_only:
+            return
 
         if (
             self._latest_map is not None
@@ -558,7 +616,7 @@ class WebBridge(Node):
         self._queued_map_hash = None
 
     def _enqueue(self, endpoint, payload, callback=None):
-        if endpoint == "/api/ros/state":
+        if endpoint in {"/api/ros/state", "/api/ros/hardware-telemetry"}:
             payload = {**payload, "_queued_at": time.monotonic()}
         try:
             self._outbox.put_nowait((endpoint, payload, callback))
@@ -579,10 +637,18 @@ class WebBridge(Node):
             except queue.Empty:
                 continue
 
-            if endpoint == "/api/ros/state":
+            if endpoint in {"/api/ros/state", "/api/ros/hardware-telemetry"}:
                 # A slow HTTP sender must not make queued scans look fresh.
                 delay = max(0.0, time.monotonic() - payload.pop("_queued_at"))
                 if delay > 3.0:
+                    continue
+                if endpoint == "/api/ros/hardware-telemetry":
+                    for key in ("status_age_ms", "odom_age_ms"):
+                        if payload[key] is not None:
+                            payload[key] += delay * 1000
+                    success = self._post_json(endpoint, payload)
+                    if callback is not None:
+                        callback(success)
                     continue
                 payload["bridge_queue_age_ms"] = delay * 1000
                 if payload["last_scan_age_ms"] is not None:

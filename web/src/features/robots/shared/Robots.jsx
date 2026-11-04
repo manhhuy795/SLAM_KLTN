@@ -22,6 +22,7 @@ import UsbCameraPreview from '../agv/UsbCameraPreview';
 import { getAgvState } from '../agv/agv';
 import AgvTelemetryPanel, { AgvDiagnosticsPanel } from '../agv/AgvTelemetryPanel';
 import AgvMissionConfiguration from '../agv/AgvMissionConfiguration';
+import AmrTelemetryPanel from '../amr/AmrTelemetryPanel';
 
 
 const TERMINAL_TASK_STATUSES = new Set([
@@ -421,7 +422,7 @@ export default function Robots({ backendOnline, selectedRobotCode, operatorId, o
           )}
 
           {tab === 'sensors' && (
-            <RobotSensors robot={robot} />
+            <AmrTelemetryPanel robotId={robot.id} />
           )}
 
           {tab === 'camera' && (
@@ -658,45 +659,6 @@ function RobotNavigation({
 }
 
 
-function RobotSensors({ robot }) {
-  const sensors =
-    robot.robot_type === 'AMR'
-      ? [
-          ['LiDAR 2D', 'Chưa có telemetry'],
-          ['Encoder', 'Chưa có telemetry'],
-          ['Camera', 'Chưa có telemetry'],
-          ['Odometry', 'Chưa có telemetry'],
-        ]
-      : [
-          ['Cảm biến line', 'Chưa có telemetry'],
-          ['Encoder', 'Chưa có telemetry'],
-          ['Camera', 'Chưa có telemetry'],
-          ['AprilTag', 'Chưa có telemetry'],
-        ];
-
-
-  return (
-    <div className="robot-detail-content">
-      <section className="robot-info-section">
-        <h3>CẢM BIẾN</h3>
-
-        <div className="sensor-grid">
-          {sensors.map(
-            ([label, value]) => (
-              <SensorItem
-                key={label}
-                label={label}
-                value={value}
-              />
-            )
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-
 function RobotCamera({ robot }) {
   return (
     <div className="robot-detail-content">
@@ -842,23 +804,6 @@ function InfoRow({
     <div className="robot-info-row">
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
-  );
-}
-
-
-function SensorItem({
-  label,
-  value,
-}) {
-  return (
-    <div className="sensor-item">
-      <Radio size={15} />
-
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
     </div>
   );
 }

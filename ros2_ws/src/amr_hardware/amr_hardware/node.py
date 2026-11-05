@@ -48,6 +48,8 @@ class HardwareBridgeNode(Node):
         self.max_ticks_per_second = self._positive(
             "max_encoder_ticks_per_second", 20000.0,
         )
+        self.left_encoder_sign = self._encoder_sign("left_encoder_sign")
+        self.right_encoder_sign = self._encoder_sign("right_encoder_sign")
         self.max_linear_velocity = self._positive(
             "max_linear_velocity", 0.22,
         )
@@ -98,6 +100,8 @@ class HardwareBridgeNode(Node):
             self.gear_ratio,
             self.counter_bits,
             self.max_ticks_per_second,
+            self.left_encoder_sign,
+            self.right_encoder_sign,
         )
         self.safety = SafetyState(self.cmd_vel_timeout)
         self.connection = None
@@ -141,6 +145,12 @@ class HardwareBridgeNode(Node):
         value = float(self.declare_parameter(name, default).value)
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"{name} must be finite and positive")
+        return value
+
+    def _encoder_sign(self, name):
+        value = self.declare_parameter(name, 1).value
+        if type(value) is not int or value not in (-1, 1):
+            raise ValueError(f"{name} must be -1 or 1")
         return value
 
     def _next_sequence(self):

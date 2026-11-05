@@ -3,11 +3,11 @@ amr_hardware:
     # Prototype values copied from amr_sim; calibrate on the physical robot.
     wheel_radius: 0.0325
     wheel_separation: 0.25
-    # UNMEASURED test placeholder, NOT the GA25 encoder specification.
-    # Count actual decoded edges per motor-shaft revolution; multiply by gear_ratio.
-    # If measured per wheel revolution, put that value here and use gear_ratio=1.
-    encoder_ticks_per_revolution: 600.0
+    # Measured per wheel revolution on AMR-01; verify under the final mechanical setup.
+    encoder_ticks_per_revolution: 893.0
     gear_ratio: 1.0
+    left_encoder_sign: 1
+    right_encoder_sign: 1
     encoder_counter_bits: 32
     max_encoder_ticks_per_second: 20000.0
 

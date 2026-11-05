@@ -38,6 +38,51 @@ class KinematicsTest(unittest.TestCase):
         self.assertAlmostEqual(update.y, 0.0)
         self.assertAlmostEqual(update.yaw, 0.0)
 
+    def test_measured_cpr_and_opposite_raw_encoder_direction(self):
+        expected = 2 * math.pi * 0.0325
+        for right_sign, right_count in ((1, 893), (-1, -893)):
+            with self.subTest(right_sign=right_sign):
+                odometry = EncoderOdometry(0.0325, 0.25, 893,
+                                            right_encoder_sign=right_sign)
+                odometry.update(0, 0, 1000)
+                update = odometry.update(893, right_count, 2000)
+                self.assertAlmostEqual(update.x, expected, places=6)
+                self.assertAlmostEqual(update.y, 0.0)
+                self.assertAlmostEqual(update.yaw, 0.0)
+                self.assertEqual((update.delta_left, update.delta_right), (893, 893))
+
+    def test_normalized_backward_and_turn(self):
+        odometry = EncoderOdometry(0.0325, 0.25, 893,
+                                    right_encoder_sign=-1)
+        odometry.update(0, 0, 1000)
+        backward = odometry.update(-100, 100, 2000)
+        self.assertLess(backward.x, 0)
+        self.assertLess(backward.linear_velocity, 0)
+        turn = odometry.update(0, 200, 3000)
+        self.assertEqual((turn.delta_left, turn.delta_right), (100, -100))
+        self.assertNotEqual(turn.yaw, 0)
+        self.assertAlmostEqual(turn.linear_velocity, 0.0)
+
+    def test_encoder_signs_reject_non_integer_and_unsupported_values(self):
+        for sign in (0, 2, -2, 1.0, True, "-1"):
+            for parameter in ("left_encoder_sign", "right_encoder_sign"):
+                with self.subTest(sign=sign, parameter=parameter), self.assertRaises(ValueError):
+                    EncoderOdometry(0.0325, 0.25, 893, **{parameter: sign})
+
+    def test_inverted_encoder_rollover_and_reset_rebaseline(self):
+        odometry = EncoderOdometry(0.0325, 0.25, 893,
+                                    right_encoder_sign=-1)
+        odometry.update(2147483646, -2147483646, 1000)
+        rollover = odometry.update(-2147483647, 2147483647, 1100)
+        self.assertEqual((rollover.delta_left, rollover.delta_right), (3, 3))
+        previous_x = rollover.x
+        odometry.reset_encoder_reference()  # ESP32 boot change re-baselines raw counters.
+        self.assertIsNone(odometry.update(0, 0, 10))
+        self.assertEqual(odometry.x, previous_x)
+        resumed = odometry.update(10, -10, 110)
+        self.assertEqual((resumed.delta_left, resumed.delta_right), (10, 10))
+        self.assertGreater(resumed.x, previous_x)
+
     def test_turn_in_place(self):
         odometry = self.make_odometry()
         odometry.update(0, 0, 1000)

@@ -51,6 +51,10 @@ Odometry uses exact arc integration; speed uses MCU uptime delta. ROS odometry
 and TF share a host ROS-clock stamp taken on receipt. There is no MCU/host clock
 synchronization in this prototype. Measure USB latency and covariance before
 sensor fusion. Safety timers use monotonic wall time even if /clock is absent.
+Encoder signs (`1` or `-1`) normalize wraparound-safe deltas after plausibility
+checks; `/hardware/status` keeps raw ESP32 counts. Leave both signs at `1`
+until physical forward directions are verified. This does not change motor B
+inversion or E-stop behavior.
 
 Startup and reconnect always latch E-stop and send STOP. Explicit clear is
 accepted only with connected serial and fresh encoder data. No velocity is
@@ -117,8 +121,9 @@ pending and is not covered by mock tests.
 | --- | --- | --- |
 | wheel_radius | 0.0325 m | Gazebo prototype, calibrate loaded radius |
 | wheel_separation | 0.25 m | Gazebo prototype, calibrate track |
-| encoder_ticks_per_revolution | 600 | Unmeasured test placeholder, NOT GA25 specification |
+| encoder_ticks_per_revolution | 893 | Reported measurement per wheel revolution; verify under final mechanical setup |
 | gear_ratio | 1.0 | Multiply motor-shaft decoded ticks by ratio; use 1 for wheel ticks |
+| left_encoder_sign / right_encoder_sign | 1 / 1 | Raw delta multiplier; set each to -1 only after direction check |
 | encoder_counter_bits | 32 | 2..32; match firmware signed width |
 | max_encoder_ticks_per_second | 20000 | Calibrate plausibility limit |
 | max_linear_velocity | 0.22 m/s | Prototype chassis limit |

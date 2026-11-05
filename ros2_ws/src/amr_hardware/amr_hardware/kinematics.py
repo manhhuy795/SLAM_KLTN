@@ -50,10 +50,18 @@ class EncoderOdometry:
         gear_ratio: float = 1.0,
         counter_bits: int = 32,
         max_ticks_per_second: float = 20000.0,
+        left_encoder_sign: int = 1,
+        right_encoder_sign: int = 1,
     ):
+        if type(left_encoder_sign) is not int or left_encoder_sign not in (-1, 1):
+            raise ValueError("left_encoder_sign must be -1 or 1")
+        if type(right_encoder_sign) is not int or right_encoder_sign not in (-1, 1):
+            raise ValueError("right_encoder_sign must be -1 or 1")
         self.wheel_separation = wheel_separation
         self.counter_bits = counter_bits
         self.max_ticks_per_second = max_ticks_per_second
+        self.left_encoder_sign = left_encoder_sign
+        self.right_encoder_sign = right_encoder_sign
         self.meters_per_tick = (
             2.0 * math.pi * wheel_radius
             / (ticks_per_revolution * gear_ratio)
@@ -95,6 +103,8 @@ class EncoderOdometry:
         if abs(delta_left) > max_delta or abs(delta_right) > max_delta:
             raise ValueError("implausible encoder delta; reset or corrupted packet")
 
+        delta_left *= self.left_encoder_sign
+        delta_right *= self.right_encoder_sign
         distance_left = delta_left * self.meters_per_tick
         distance_right = delta_right * self.meters_per_tick
         distance = (distance_left + distance_right) / 2.0
